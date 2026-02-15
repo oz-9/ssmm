@@ -1,0 +1,18 @@
+# Private keys - NEVER commit
+*.pem
+*.key
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Windows artifacts
+nul
+
+# Config with secrets (if applicable)
+config/config.py
