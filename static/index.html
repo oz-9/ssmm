@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>market maker</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] { -moz-appearance: textfield; }
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #000000;
+            color: #e0e0e0;
+            padding: 20px;
+            font-size: 14px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #2d2d44;
+        }
+        .header h1 { color: #9d4edd; font-size: 18px; }
+        .balance { color: #9d4edd; font-size: 16px; }
+
+        .controls {
+            background: #0a0a0f;
+            border: 1px solid #2d2d44;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .controls h3 { margin-bottom: 10px; color: #888; }
+        .form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { color: #888; font-size: 11px; }
+        .form-group input {
+            background: #000000;
+            border: 1px solid #2d2d44;
+            color: #e0e0e0;
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+        .form-group input:focus { outline: none; border-color: #9d4edd; }
+        .form-group input.short { width: 80px; }
+        .form-group input.medium { width: 280px; }
+
+        button {
+            background: #9d4edd;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        button:hover { background: #b266ff; }
+        button.stop { background: #dc3545; color: #fff; }
+        button.stop:hover { background: #e35d6a; }
+        button.secondary { background: #2d2d44; color: #e0e0e0; }
+        button.secondary:hover { background: #3d3d5c; }
+
+        .matches {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .match {
+            background: #0a0a0f;
+            border: 1px solid #2d2d44;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        .match.active { border-color: #9d4edd; }
+        .match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .match-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .match-name { font-weight: bold; color: #e0e0e0; }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #444;
+        }
+        .status-dot.active { background: #22c55e; }
+        .match-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .match-actions button { padding: 5px 12px; font-size: 12px; }
+
+        .orderbooks {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 12px;
+        }
+        .orderbook {
+            background: #000000;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .orderbook-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #2d2d44;
+        }
+        .orderbook-label { color: #9d4edd; font-weight: bold; }
+        .orderbook-theo { color: #888; font-size: 12px; }
+
+        .orderbook-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        .orderbook-side { color: #888; width: 30px; }
+        .orderbook-best { color: #e0e0e0; }
+        .orderbook-our { font-weight: bold; }
+        .orderbook-our.active { color: #9d4edd; }
+        .orderbook-our.rebal { color: #f59e0b; }
+        .orderbook-our.inactive { color: #dc3545; font-style: italic; font-weight: normal; }
+
+        .match-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 10px;
+            border-top: 1px solid #2d2d44;
+            font-size: 13px;
+        }
+        .inventory { color: #888; }
+        .inventory.overexposed { color: #dc3545; }
+
+        .match-settings {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .setting-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .setting-group label {
+            color: #666;
+            font-size: 11px;
+        }
+        .setting-group input {
+            background: #000;
+            border: 1px solid #2d2d44;
+            color: #e0e0e0;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 12px;
+            width: 50px;
+            text-align: center;
+        }
+        .setting-group input:focus {
+            outline: none;
+            border-color: #9d4edd;
+        }
+        .setting-group input.wide {
+            width: 70px;
+        }
+
+        .fills {
+            background: #0a0a0f;
+            border: 1px solid #2d2d44;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .fills h3 { margin-bottom: 10px; color: #888; }
+        .fill-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .fill {
+            padding: 6px 0;
+            border-bottom: 1px solid #1a1a24;
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+        }
+        .fill:last-child { border-bottom: none; }
+        .fill-time { color: #888; }
+        .fill-details { color: #e0e0e0; }
+        .fill.complete { color: #9d4edd; }
+
+        .connection {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .connection.connected { background: #22c55e; color: #000; }
+        .connection.disconnected { background: #dc3545; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>market maker</h1>
+        <div class="balance">cash: $<span id="balance">0.00</span></div>
+    </div>
+
+    <div class="controls">
+        <h3>add match</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>ticker a</label>
+                <input type="text" id="ticker_a" class="medium" placeholder="KXCS2GAME-26FEB15R2BHE-R2">
+            </div>
+            <div class="form-group">
+                <label>ticker b</label>
+                <input type="text" id="ticker_b" class="medium" placeholder="KXCS2GAME-26FEB15R2BHE-BHE">
+            </div>
+            <div class="form-group">
+                <label>odds a</label>
+                <input type="number" id="odds_a" class="short" step="0.01" placeholder="1.80">
+            </div>
+            <div class="form-group">
+                <label>odds b</label>
+                <input type="number" id="odds_b" class="short" step="0.01" placeholder="2.00">
+            </div>
+            <div class="form-group">
+                <label>edge</label>
+                <input type="number" id="edge" class="short" step="0.1" value="1.5">
+            </div>
+            <div class="form-group">
+                <label>contracts</label>
+                <input type="number" id="contracts" class="short" value="30">
+            </div>
+            <div class="form-group">
+                <label>inv max</label>
+                <input type="number" id="inventory_max" class="short" value="20">
+            </div>
+            <button onclick="addMatch()">add</button>
+        </div>
+    </div>
+
+    <div class="matches" id="matches">
+        <!-- Matches will be rendered here -->
+    </div>
+
+    <div class="fills">
+        <h3>recent fills</h3>
+        <div class="fill-list" id="fills">
+            <!-- Fills will be rendered here -->
+        </div>
+    </div>
+
+    <div class="connection disconnected" id="connection">disconnected</div>
+
+    <script>
+        let ws = null;
+        let state = { matches: [], fills: [], balance: 0 };
+
+        function connect() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+            ws.onopen = () => {
+                document.getElementById('connection').className = 'connection connected';
+                document.getElementById('connection').textContent = 'connected';
+            };
+
+            ws.onclose = () => {
+                document.getElementById('connection').className = 'connection disconnected';
+                document.getElementById('connection').textContent = 'disconnected';
+                setTimeout(connect, 2000);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'state') {
+                    state = data;
+                    render();
+                }
+            };
+        }
+
+        function renderOrder(order, isActive) {
+            if (!isActive) {
+                return `<span class="orderbook-our inactive">stopped</span>`;
+            } else if (order.price && order.reason && order.reason.includes('rebal')) {
+                return `<span class="orderbook-our rebal">bid ${order.price}c (-ev rebal)</span>`;
+            } else if (order.price && order.reason === 'at ceiling') {
+                return `<span class="orderbook-our active">bid ${order.price}c (ceiling)</span>`;
+            } else if (order.price) {
+                return `<span class="orderbook-our active">bid ${order.price}c</span>`;
+            } else if (order.reason) {
+                return `<span class="orderbook-our inactive">${order.reason}</span>`;
+            } else {
+                return `<span class="orderbook-our inactive">-</span>`;
+            }
+        }
+
+        function render() {
+            document.getElementById('balance').textContent = state.balance.toFixed(2);
+
+            // Render matches
+            const matchesEl = document.getElementById('matches');
+            matchesEl.innerHTML = state.matches.map(m => `
+                <div class="match ${m.active ? 'active' : ''}">
+                    <div class="match-header">
+                        <div class="match-title">
+                            <div class="status-dot ${m.active ? 'active' : ''}"></div>
+                            <span class="match-name">${m.name}</span>
+                        </div>
+                        <div class="match-actions">
+                            ${m.active
+                                ? `<button class="stop" onclick="stopMatch('${m.id}')">stop</button>`
+                                : `<button onclick="startMatch('${m.id}')">start</button>`
+                            }
+                            <button class="secondary" onclick="removeMatch('${m.id}')">remove</button>
+                        </div>
+                    </div>
+                    <div class="orderbooks">
+                        <div class="orderbook">
+                            <div class="orderbook-header">
+                                <span class="orderbook-label">${m.market_a.label}</span>
+                                <span class="orderbook-theo">theo ${m.market_a.theo.toFixed(1)}c</span>
+                            </div>
+                            <div class="orderbook-row">
+                                <span class="orderbook-side">yes</span>
+                                <span class="orderbook-best">${m.market_a.best_bid}@${m.market_a.best_ask}</span>
+                                ${renderOrder(m.orders.a_yes, m.active)}
+                            </div>
+                            <div class="orderbook-row">
+                                <span class="orderbook-side">no</span>
+                                <span class="orderbook-best">${100 - m.market_a.best_ask}@${100 - m.market_a.best_bid}</span>
+                                ${renderOrder(m.orders.a_no, m.active)}
+                            </div>
+                        </div>
+                        <div class="orderbook">
+                            <div class="orderbook-header">
+                                <span class="orderbook-label">${m.market_b.label}</span>
+                                <span class="orderbook-theo">theo ${m.market_b.theo.toFixed(1)}c</span>
+                            </div>
+                            <div class="orderbook-row">
+                                <span class="orderbook-side">yes</span>
+                                <span class="orderbook-best">${m.market_b.best_bid}@${m.market_b.best_ask}</span>
+                                ${renderOrder(m.orders.b_yes, m.active)}
+                            </div>
+                            <div class="orderbook-row">
+                                <span class="orderbook-side">no</span>
+                                <span class="orderbook-best">${100 - m.market_b.best_ask}@${100 - m.market_b.best_bid}</span>
+                                ${renderOrder(m.orders.b_no, m.active)}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="match-footer">
+                        <span class="inventory ${Math.abs(m.inventory) >= m.inventory_max ? 'overexposed' : ''}">
+                            ${m.inventory === 0 ? 'neutral' : m.inventory > 0 ? `long ${m.market_a.label} (${m.inventory})` : `long ${m.market_b.label} (${Math.abs(m.inventory)})`}
+                        </span>
+                        <div class="match-settings">
+                            <div class="setting-group">
+                                <label>odds</label>
+                                <input type="number" step="0.01" value="${m.odds_a}" class="wide" onchange="updateSettings('${m.id}', 'odds_a', this.value)">
+                                <input type="number" step="0.01" value="${m.odds_b}" class="wide" onchange="updateSettings('${m.id}', 'odds_b', this.value)">
+                            </div>
+                            <div class="setting-group">
+                                <label>edge</label>
+                                <input type="number" step="0.1" value="${m.edge}" onchange="updateSettings('${m.id}', 'edge', this.value)">
+                            </div>
+                            <div class="setting-group">
+                                <label>size</label>
+                                <input type="number" value="${m.contracts}" onchange="updateSettings('${m.id}', 'contracts', this.value)">
+                            </div>
+                            <div class="setting-group">
+                                <label>max</label>
+                                <input type="number" value="${m.inventory_max}" onchange="updateSettings('${m.id}', 'inventory_max', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Render fills
+            const fillsEl = document.getElementById('fills');
+            fillsEl.innerHTML = state.fills.slice().reverse().map(f => `
+                <div class="fill ${f.complete_set ? 'complete' : ''}">
+                    <span class="fill-time">${f.timestamp}</span>
+                    <span class="fill-details">
+                        [${f.match_id}] ${f.side} ${f.count}@${f.price}c
+                        ${f.complete_set ? `+${f.profit}c` : ''}
+                    </span>
+                </div>
+            `).join('') || '<div style="color: #888;">no fills yet</div>';
+        }
+
+        async function addMatch() {
+            const ticker_a = document.getElementById('ticker_a').value;
+            const ticker_b = document.getElementById('ticker_b').value;
+            const odds_a = parseFloat(document.getElementById('odds_a').value);
+            const odds_b = parseFloat(document.getElementById('odds_b').value);
+            const edge = parseFloat(document.getElementById('edge').value) || 1.5;
+            const contracts = parseInt(document.getElementById('contracts').value) || 30;
+            const inventory_max = parseInt(document.getElementById('inventory_max').value) || 20;
+
+            if (!ticker_a || !ticker_b || !odds_a || !odds_b) {
+                alert('please fill all fields');
+                return;
+            }
+
+            await fetch('/api/matches', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticker_a, ticker_b, odds_a, odds_b, edge, contracts, inventory_max })
+            });
+
+            // Clear ticker and odds inputs only
+            document.getElementById('ticker_a').value = '';
+            document.getElementById('ticker_b').value = '';
+            document.getElementById('odds_a').value = '';
+            document.getElementById('odds_b').value = '';
+        }
+
+        async function startMatch(id) {
+            await fetch(`/api/matches/${id}/start`, { method: 'POST' });
+        }
+
+        async function stopMatch(id) {
+            await fetch(`/api/matches/${id}/stop`, { method: 'POST' });
+        }
+
+        async function removeMatch(id) {
+            if (confirm('remove this match?')) {
+                await fetch(`/api/matches/${id}`, { method: 'DELETE' });
+            }
+        }
+
+        async function updateSettings(id, field, value) {
+            const match = state.matches.find(m => m.id === id);
+            if (!match) return;
+
+            const payload = {};
+
+            if (field === 'odds_a' || field === 'odds_b') {
+                // For odds, send both values
+                payload.odds_a = field === 'odds_a' ? parseFloat(value) : match.odds_a;
+                payload.odds_b = field === 'odds_b' ? parseFloat(value) : match.odds_b;
+            } else if (field === 'edge') {
+                payload.edge = parseFloat(value);
+            } else if (field === 'contracts') {
+                payload.contracts = parseInt(value);
+            } else if (field === 'inventory_max') {
+                payload.inventory_max = parseInt(value);
+            }
+
+            await fetch(`/api/matches/${id}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
+
+        // Initial connection
+        connect();
+    </script>
+</body>
+</html>

@@ -131,6 +131,7 @@ class OrderState:
     price: int
     count: int
     filled: int = 0
+    placed_at: float = 0.0  # timestamp when placed
 
 
 def get_book_with_depth(ticker: str) -> dict:
@@ -189,8 +190,24 @@ def calculate_adaptive_price(
     sticky_ceiling: bool = False, is_retest: bool = False,
     best_qty: int = 0, our_size: int = 0
 ) -> int:
-    """Calculate adaptive price within theo ceiling."""
+    """
+    Calculate adaptive price within theo ceiling.
 
+    Args:
+        theo: theo probability in cents
+        best_price: current best bid/ask in book
+        second_price: second best (competition if we're at best)
+        side: "bid" or "ask"
+        edge_min: minimum edge from theo
+        our_current: our current price (to detect our order)
+        sticky_ceiling: stay at ceiling even if competition drops
+        is_retest: drop down to find better price (overrides sticky)
+        best_qty: quantity at best price (to detect ties)
+        our_size: our order size
+
+    Returns:
+        Target price, or -1 if should back off
+    """
     if side == "bid":
         ceiling = int(theo - edge_min)
 
@@ -225,10 +242,14 @@ def calculate_adaptive_price(
                 target = second_price - 1 if second_price < 100 else 99
         elif our_current is not None and best_price < our_current:
             if best_price < floor:
+                if must_quote:
+                    return min(99, floor)
                 return -1
             target = best_price - 1
         else:
             if best_price < floor:
+                if must_quote:
+                    return min(99, floor)
                 return -1
             target = best_price - 1
 
@@ -392,11 +413,21 @@ def adaptive_market_maker(
             print(f"\n[{now.strftime('%H:%M:%S')}] RETEST | Inventory: {inventory}")
             last_retest_time = now
 
-        # Inventory limits
+        # Inventory limits - determine which sides we can quote
+        # inventory >= max: only quote B YES, A NO (reduces inventory)
+        # inventory <= -max: only quote A YES, B NO (reduces inventory)
         can_quote_a_yes = inventory < inventory_max
         can_quote_b_no = inventory < inventory_max
         can_quote_b_yes = inventory > -inventory_max
         can_quote_a_no = inventory > -inventory_max
+
+        # Must-quote mode: when at limit, ALWAYS quote reducing sides at ceiling
+        at_positive_limit = inventory >= inventory_max   # long A, need to reduce
+        at_negative_limit = inventory <= -inventory_max  # long B, need to reduce
+        must_quote_b_yes = at_positive_limit  # B YES reduces positive inventory
+        must_quote_a_no = at_positive_limit   # A NO reduces positive inventory
+        must_quote_a_yes = at_negative_limit  # A YES reduces negative inventory
+        must_quote_b_no = at_negative_limit   # B NO reduces negative inventory
 
         book_a = get_book_with_depth(ticker_a)
         book_b = get_book_with_depth(ticker_b)
@@ -412,7 +443,8 @@ def adaptive_market_maker(
                 theo_a, book_a["best_bid"], book_a["second_bid"], "bid", edge_min,
                 a_yes_current.price if a_yes_current else None,
                 sticky_ceiling=True, is_retest=is_retest,
-                best_qty=book_a["best_bid_qty"], our_size=contracts)
+                best_qty=book_a["best_bid_qty"], our_size=contracts,
+                must_quote=must_quote_a_yes)
         else:
             a_yes_price = -2
 
@@ -421,7 +453,8 @@ def adaptive_market_maker(
                 theo_b, book_b["best_bid"], book_b["second_bid"], "bid", edge_min,
                 b_yes_current.price if b_yes_current else None,
                 sticky_ceiling=True, is_retest=is_retest,
-                best_qty=book_b["best_bid_qty"], our_size=contracts)
+                best_qty=book_b["best_bid_qty"], our_size=contracts,
+                must_quote=must_quote_b_yes)
         else:
             b_yes_price = -2
 
@@ -430,7 +463,8 @@ def adaptive_market_maker(
                 theo_b, book_a["best_no_bid"], book_a["second_no_bid"], "bid", edge_min,
                 a_no_current.price if a_no_current else None,
                 sticky_ceiling=True, is_retest=is_retest,
-                best_qty=book_a["best_no_bid_qty"], our_size=contracts)
+                best_qty=book_a["best_no_bid_qty"], our_size=contracts,
+                must_quote=must_quote_a_no)
         else:
             a_no_price = -2
 
@@ -439,7 +473,8 @@ def adaptive_market_maker(
                 theo_a, book_b["best_no_bid"], book_b["second_no_bid"], "bid", edge_min,
                 b_no_current.price if b_no_current else None,
                 sticky_ceiling=True, is_retest=is_retest,
-                best_qty=book_b["best_no_bid_qty"], our_size=contracts)
+                best_qty=book_b["best_no_bid_qty"], our_size=contracts,
+                must_quote=must_quote_b_no)
         else:
             b_no_price = -2
 
@@ -460,7 +495,12 @@ def adaptive_market_maker(
             return False
 
         now = datetime.datetime.now(datetime.timezone.utc)
-        print(f"\n[{now.strftime('%H:%M:%S')}] Book changed - re-quoting")
+        rebalance_msg = ""
+        if at_positive_limit:
+            rebalance_msg = f" | REBALANCING (inv: +{inventory}, quoting {label_b} YES/{label_a} NO)"
+        elif at_negative_limit:
+            rebalance_msg = f" | REBALANCING (inv: {inventory}, quoting {label_a} YES/{label_b} NO)"
+        print(f"\n[{now.strftime('%H:%M:%S')}] Book changed - re-quoting{rebalance_msg}")
         print(f"  {label_a}: {book_a['best_bid']}c / {book_a['best_ask']}c | {label_b}: {book_b['best_bid']}c / {book_b['best_ask']}c")
 
         place_or_update(ticker_a, "yes", True, a_yes_price)
