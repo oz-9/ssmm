@@ -829,20 +829,29 @@
         }
 
         async function startMatch(id, btn) {
-            if (btn) { btn.disabled = true; btn.textContent = '...'; }
+            // Optimistic update - prevent double-click
+            const match = state.matches.find(m => m.id === id);
+            if (match) match.active = true;
+            render();
+
             await fetch(`/api/matches/${id}/start`, { method: 'POST' });
-            // Button will be replaced by render() when state updates
         }
 
         async function stopMatch(id, btn) {
-            if (btn) { btn.disabled = true; btn.textContent = '...'; }
+            // Optimistic update - prevent double-click
+            const match = state.matches.find(m => m.id === id);
+            if (match) match.active = false;
+            render();
+
             await fetch(`/api/matches/${id}/stop`, { method: 'POST' });
-            // Button will be replaced by render() when state updates
         }
 
         async function removeMatch(id, btn) {
             if (confirm('remove this match?')) {
-                if (btn) { btn.disabled = true; btn.textContent = '...'; }
+                // Optimistic update
+                state.matches = state.matches.filter(m => m.id !== id);
+                render();
+
                 await fetch(`/api/matches/${id}`, { method: 'DELETE' });
             }
         }
