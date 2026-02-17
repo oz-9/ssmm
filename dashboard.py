@@ -340,6 +340,74 @@ async def handle_match_update(match: Match):
     # Broadcast state to dashboard clients
     await broadcast(get_state())
 
+async def on_fill(fill_data: dict):
+    """Handle fill notification from WebSocket."""
+    global fills, orders
+
+    ticker = fill_data.get("market_ticker")
+    order_id = fill_data.get("order_id")
+    side = fill_data.get("side")  # "yes" or "no"
+    price = fill_data.get("yes_price") if side == "yes" else fill_data.get("no_price", fill_data.get("yes_price"))
+    count = fill_data.get("count", 0)
+    post_position = fill_data.get("post_position", 0)
+
+    # Find which match this fill belongs to
+    for match in matches.values():
+        if ticker not in [match.market_a.ticker, match.market_b.ticker]:
+            continue
+
+        # Track cost basis
+        fill_cost = count * price
+        if (ticker == match.market_a.ticker and side == "yes") or \
+           (ticker == match.market_b.ticker and side == "no"):
+            # Going long A
+            match.cost_long_a += fill_cost
+            match.count_long_a += count
+        else:
+            # Going long B
+            match.cost_long_b += fill_cost
+            match.count_long_b += count
+
+        # Record fill for display
+        label = match.market_a.label if ticker == match.market_a.ticker else match.market_b.label
+        fill = Fill(
+            timestamp=datetime.datetime.now().strftime("%H:%M:%S"),
+            match_id=match.id,
+            side=f"{label} {side.upper()}",
+            price=price,
+            count=count,
+        )
+        fills.append(fill)
+        print(f"[{match.id}] FILL (WS): {fill.side} {count}@{price}c")
+
+        # Remove filled order from tracking
+        order_key = f"{match.id}:{ticker}:{side}"
+        if order_key in orders:
+            del orders[order_key]
+
+        # Broadcast updated state
+        await broadcast(get_state())
+        break
+
+async def on_position_change(position_data: dict):
+    """Handle position update from WebSocket."""
+    ticker = position_data.get("market_ticker")
+    position = position_data.get("position", 0)  # Net YES position
+
+    # Find which match this position belongs to and update inventory
+    for match in matches.values():
+        if ticker == match.market_a.ticker:
+            # A YES position contributes +position to inventory
+            # Recalculate full inventory (simplified - just trigger update)
+            old_inv = match.inventory
+            # A YES adds to inventory, B YES subtracts
+            # We'll let the next handle_match_update sync this
+            await broadcast(get_state())
+            break
+        elif ticker == match.market_b.ticker:
+            await broadcast(get_state())
+            break
+
 # =============================================================================
 # TRADING LOOP
 # =============================================================================
@@ -408,15 +476,18 @@ async def trading_loop():
 
     print("Trading loop started (WebSocket mode)")
 
-    # Connect WebSocket and register callback
+    # Connect WebSocket and register all callbacks
     if ws_client:
         ws_client.on_orderbook_change(on_orderbook_change)
+        ws_client.on_fill(on_fill)
+        ws_client.on_position_change(on_position_change)
         await ws_client.connect()
 
     # Start WebSocket listener in background
     ws_task = asyncio.create_task(ws_client.listen()) if ws_client else None
 
-    # Periodic tasks (inventory sync, fill checks, sticky reset)
+    # Periodic tasks (event time checks, state broadcast)
+    # Fills and positions now come via WebSocket - no polling needed
     while True:
         try:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -431,12 +502,6 @@ async def trading_loop():
                     match.active = False
                     await cancel_match_orders(match)
                     continue
-
-                # Sync inventory from Kalshi positions (less frequent)
-                match.inventory = calculate_match_inventory(match)
-
-                # Check for fills
-                await check_fills(match)
 
             # Broadcast state periodically
             await broadcast(get_state())

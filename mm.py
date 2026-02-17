@@ -146,6 +146,8 @@ class KalshiWebSocket:
         self.subscribed_tickers: set[str] = set()
         self._message_id = 0
         self._callbacks: list = []  # list of async callbacks on orderbook change
+        self._fill_callbacks: list = []  # list of async callbacks on fill
+        self._position_callbacks: list = []  # list of async callbacks on position change
 
     def _sign(self, message: str) -> str:
         signature = self.private_key.sign(
@@ -177,7 +179,7 @@ class KalshiWebSocket:
         print("Kalshi WebSocket connected")
 
     async def subscribe(self, tickers: list[str]):
-        """Subscribe to orderbook updates for tickers."""
+        """Subscribe to orderbook, fill, and position updates for tickers."""
         if not self.ws:
             await self.connect()
 
@@ -185,21 +187,22 @@ class KalshiWebSocket:
         if not new_tickers:
             return
 
+        # Subscribe to all channels we need
         self._message_id += 1
         msg = {
             "id": self._message_id,
             "cmd": "subscribe",
             "params": {
-                "channels": ["orderbook_delta"],
+                "channels": ["orderbook_delta", "fill", "market_positions"],
                 "market_tickers": new_tickers
             }
         }
         await self.ws.send(json.dumps(msg))
         self.subscribed_tickers.update(new_tickers)
-        print(f"Subscribed to orderbook: {new_tickers}")
+        print(f"Subscribed to orderbook/fill/positions: {new_tickers}")
 
     async def unsubscribe(self, tickers: list[str]):
-        """Unsubscribe from orderbook updates."""
+        """Unsubscribe from all updates for tickers."""
         if not self.ws:
             return
 
@@ -212,7 +215,7 @@ class KalshiWebSocket:
             "id": self._message_id,
             "cmd": "unsubscribe",
             "params": {
-                "channels": ["orderbook_delta"],
+                "channels": ["orderbook_delta", "fill", "market_positions"],
                 "market_tickers": to_unsub
             }
         }
@@ -220,11 +223,19 @@ class KalshiWebSocket:
         self.subscribed_tickers -= set(to_unsub)
         for t in to_unsub:
             self.orderbooks.pop(t, None)
-        print(f"Unsubscribed from orderbook: {to_unsub}")
+        print(f"Unsubscribed: {to_unsub}")
 
     def on_orderbook_change(self, callback):
         """Register callback for orderbook changes. callback(ticker, book_data)"""
         self._callbacks.append(callback)
+
+    def on_fill(self, callback):
+        """Register callback for fills. callback(fill_data)"""
+        self._fill_callbacks.append(callback)
+
+    def on_position_change(self, callback):
+        """Register callback for position changes. callback(position_data)"""
+        self._position_callbacks.append(callback)
 
     def _parse_book(self, ticker: str) -> dict:
         """Convert internal orderbook to get_book_with_depth format."""
@@ -301,6 +312,18 @@ class KalshiWebSocket:
 
                 for cb in self._callbacks:
                     await cb(ticker, self._parse_book(ticker))
+
+        elif msg_type == "fill":
+            # Fill notification: order_id, market_ticker, side, yes_price, count, action, post_position
+            data = msg.get("msg", {})
+            for cb in self._fill_callbacks:
+                await cb(data)
+
+        elif msg_type == "market_positions":
+            # Position update: market_ticker, position, etc.
+            data = msg.get("msg", {})
+            for cb in self._position_callbacks:
+                await cb(data)
 
     async def listen(self):
         """Main loop to receive and process messages with auto-reconnect."""
