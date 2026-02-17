@@ -37,34 +37,8 @@ from boxing_scanner import scan as scan_boxing
 # =============================================================================
 
 import time
-from collections import deque
 
-# Request tracking (rolling window)
-request_timestamps: deque = deque(maxlen=1000)  # Store last 1000 request times
-RATE_WINDOW = 10.0  # seconds to measure rate over
 REBAL_FEE_BUFFER_CENTS = 2  # Maker fees: ~1c entry + ~1c rebalance (ceil(0.0175 * P * (1-P)) per leg)
-
-def track_request():
-    """Record a request timestamp."""
-    request_timestamps.append(time.time())
-
-def get_request_rate() -> dict:
-    """Get current request rate stats."""
-    now = time.time()
-    # Count requests in the last RATE_WINDOW seconds
-    recent = sum(1 for t in request_timestamps if now - t < RATE_WINDOW)
-    rate_per_sec = recent / RATE_WINDOW
-
-    # Estimate limit (Kalshi typically allows ~10 req/sec for trading)
-    estimated_limit = 10.0  # requests per second
-    usage_pct = (rate_per_sec / estimated_limit) * 100
-
-    return {
-        "requests_last_10s": recent,
-        "rate_per_sec": round(rate_per_sec, 2),
-        "estimated_limit": estimated_limit,
-        "usage_pct": min(round(usage_pct, 1), 100.0),
-    }
 
 # Global timing settings
 class Settings:
@@ -462,7 +436,6 @@ def get_state() -> dict:
             for m in matches.values()
         ],
         "fills": [asdict(f) for f in fills[-10:]],  # Last 10 fills
-        "rate": get_request_rate(),
         "settings": {
             "check_interval": settings.check_interval,
             "sticky_reset_secs": settings.sticky_reset_secs,

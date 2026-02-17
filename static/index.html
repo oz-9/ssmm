@@ -412,25 +412,6 @@
             to { opacity: 1; transform: translateX(0); }
         }
 
-        /* Rate display */
-        .rate-display {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            margin-left: auto;
-        }
-        .rate-display label { color: #666; }
-        .rate-display span {
-            background: #000;
-            border: 1px solid #2d2d44;
-            border-radius: 3px;
-            padding: 2px 8px;
-            min-width: 40px;
-            text-align: center;
-        }
-        .rate-display.warning span { border-color: #f59e0b; color: #f59e0b; }
-        .rate-display.danger span { border-color: #dc3545; color: #dc3545; }
-
         /* Settings bar */
         .settings-bar {
             display: flex;
@@ -476,8 +457,8 @@
             <span class="value cash">$<span id="balance">0.00</span></span>
         </div>
         <div class="dashboard-item api-dropdown">
-            <label>api capacity</label>
-            <span class="value api" id="api-rate" onclick="toggleApiDropdown()">0%</span>
+            <label>settings</label>
+            <span class="value api" id="api-rate" onclick="toggleApiDropdown()">⚙</span>
             <div class="api-dropdown-menu" id="api-dropdown-menu">
                 <div class="setting-inline">
                     <label>check</label>
@@ -595,7 +576,7 @@
 
     <script>
         let ws = null;
-        let state = { matches: [], fills: [], balance: 0, rate: {}, settings: {} };
+        let state = { matches: [], fills: [], balance: 0, settings: {} };
         let previousFillCount = 0;
         let showAllFills = false;
         let lastFillsJson = '';
@@ -658,17 +639,6 @@
 
         function render() {
             document.getElementById('balance').textContent = state.balance.toFixed(2);
-
-            // Update rate display in dashboard
-            if (state.rate) {
-                const ratePct = state.rate.usage_pct || 0;
-                const apiRateEl = document.getElementById('api-rate');
-                apiRateEl.textContent = `${ratePct}%`;
-                apiRateEl.title = `${state.rate.rate_per_sec}/s (${state.rate.requests_last_10s} in 10s)`;
-
-                // Color based on usage
-                apiRateEl.style.color = ratePct >= 80 ? '#dc3545' : ratePct >= 50 ? '#f0ad4e' : '#9d4edd';
-            }
 
             // Sync settings inputs (only on first load)
             if (state.settings && !settingsInitialized) {
