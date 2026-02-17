@@ -300,19 +300,6 @@ def update_match_odds(match_id: str, odds_a: float, odds_b: float):
     match.market_a.theo = theo["a"]
     match.market_b.theo = theo["b"]
 
-def refresh_orderbooks():
-    """Refresh orderbook data for all matches."""
-    for match in matches.values():
-        # Market A
-        book_a = get_book_with_depth(match.market_a.ticker)
-        match.market_a.best_bid = book_a["best_bid"]
-        match.market_a.best_ask = book_a["best_ask"]
-
-        # Market B
-        book_b = get_book_with_depth(match.market_b.ticker)
-        match.market_b.best_bid = book_b["best_bid"]
-        match.market_b.best_ask = book_b["best_ask"]
-
 async def on_orderbook_change(ticker: str, book: dict):
     """Handle orderbook update from WebSocket."""
     # Find which match this ticker belongs to
