@@ -240,7 +240,18 @@ def add_match(config: MatchConfig) -> Match:
     label_b = get_label(config.ticker_b)
 
     match_id = f"{label_a}v{label_b}"
-    name = config.name or f"{label_a} vs {label_b}"
+
+    # Get full event name from Kalshi
+    name = config.name
+    if not name and client:
+        try:
+            market = client.get_market(config.ticker_a)
+            # Market title is like "Robert Morris vs Stony Brook"
+            name = market.get("title") or market.get("subtitle") or f"{label_a} vs {label_b}"
+        except:
+            name = f"{label_a} vs {label_b}"
+    else:
+        name = name or f"{label_a} vs {label_b}"
 
     match = Match(
         id=match_id,

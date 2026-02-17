@@ -101,7 +101,8 @@
             align-items: center;
             gap: 10px;
         }
-        .match-name { font-weight: bold; color: #e0e0e0; }
+        .match-name { font-weight: bold; color: #e0e0e0; text-decoration: none; }
+        .match-name:hover { color: #9d4edd; text-decoration: underline; }
         .status-dot {
             width: 10px;
             height: 10px;
@@ -655,7 +656,7 @@
                     <div class="match-header">
                         <div class="match-title">
                             <div class="status-dot ${m.active ? 'active' : ''}"></div>
-                            <span class="match-name">${m.name}</span>
+                            <a class="match-name" href="https://kalshi.com/markets/${m.market_a.ticker}" target="_blank">${m.name}</a>
                         </div>
                         <div class="match-actions">
                             ${m.active
