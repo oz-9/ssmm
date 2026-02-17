@@ -539,7 +539,7 @@
                 <label>inv max</label>
                 <input type="number" id="inventory_max" class="short" value="20">
             </div>
-            <button onclick="addMatch()">add</button>
+            <button onclick="addMatch(this)">add</button>
         </div>
     </div>
 
@@ -660,10 +660,10 @@
                         </div>
                         <div class="match-actions">
                             ${m.active
-                                ? `<button class="stop" onclick="stopMatch('${m.id}')">stop</button>`
-                                : `<button onclick="startMatch('${m.id}')">start</button>`
+                                ? `<button class="stop" onclick="stopMatch('${m.id}', this)">stop</button>`
+                                : `<button onclick="startMatch('${m.id}', this)">start</button>`
                             }
-                            <button class="secondary" onclick="removeMatch('${m.id}')">remove</button>
+                            <button class="secondary" onclick="removeMatch('${m.id}', this)">remove</button>
                         </div>
                     </div>
                     <div class="orderbooks">
@@ -795,7 +795,7 @@
             }, 3000);
         }
 
-        async function addMatch() {
+        async function addMatch(btn) {
             const ticker_a = document.getElementById('ticker_a').value;
             const ticker_b = document.getElementById('ticker_b').value;
             const odds_a = parseFloat(document.getElementById('odds_a').value);
@@ -809,6 +809,9 @@
                 return;
             }
 
+            // Show loading
+            if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
             await fetch('/api/matches', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -820,18 +823,26 @@
             document.getElementById('ticker_b').value = '';
             document.getElementById('odds_a').value = '';
             document.getElementById('odds_b').value = '';
+
+            // Reset button
+            if (btn) { btn.disabled = false; btn.textContent = 'add'; }
         }
 
-        async function startMatch(id) {
+        async function startMatch(id, btn) {
+            if (btn) { btn.disabled = true; btn.textContent = '...'; }
             await fetch(`/api/matches/${id}/start`, { method: 'POST' });
+            // Button will be replaced by render() when state updates
         }
 
-        async function stopMatch(id) {
+        async function stopMatch(id, btn) {
+            if (btn) { btn.disabled = true; btn.textContent = '...'; }
             await fetch(`/api/matches/${id}/stop`, { method: 'POST' });
+            // Button will be replaced by render() when state updates
         }
 
-        async function removeMatch(id) {
+        async function removeMatch(id, btn) {
             if (confirm('remove this match?')) {
+                if (btn) { btn.disabled = true; btn.textContent = '...'; }
                 await fetch(`/api/matches/${id}`, { method: 'DELETE' });
             }
         }
