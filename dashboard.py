@@ -7,6 +7,7 @@ Open: http://localhost:8000
 import asyncio
 import datetime
 import json
+import math
 from dataclasses import dataclass, asdict
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -27,6 +28,50 @@ from mm import (
     OrderState,
     KALSHI_BASE_URL,
 )
+from lacrosse_scanner import scan as scan_lacrosse
+from boxing_scanner import scan as scan_boxing
+
+# =============================================================================
+# RATE TRACKING & SETTINGS
+# =============================================================================
+
+import time
+from collections import deque
+
+# Request tracking (rolling window)
+request_timestamps: deque = deque(maxlen=1000)  # Store last 1000 request times
+RATE_WINDOW = 10.0  # seconds to measure rate over
+REBAL_FEE_BUFFER_CENTS = 2  # Maker fees: ~1c entry + ~1c rebalance (ceil(0.0175 * P * (1-P)) per leg)
+
+def track_request():
+    """Record a request timestamp."""
+    request_timestamps.append(time.time())
+
+def get_request_rate() -> dict:
+    """Get current request rate stats."""
+    now = time.time()
+    # Count requests in the last RATE_WINDOW seconds
+    recent = sum(1 for t in request_timestamps if now - t < RATE_WINDOW)
+    rate_per_sec = recent / RATE_WINDOW
+
+    # Estimate limit (Kalshi typically allows ~10 req/sec for trading)
+    estimated_limit = 10.0  # requests per second
+    usage_pct = (rate_per_sec / estimated_limit) * 100
+
+    return {
+        "requests_last_10s": recent,
+        "rate_per_sec": round(rate_per_sec, 2),
+        "estimated_limit": estimated_limit,
+        "usage_pct": min(round(usage_pct, 1), 100.0),
+    }
+
+# Global timing settings
+class Settings:
+    check_interval: float = 2.0      # How often to check/update quotes (seconds)
+    sticky_reset_secs: float = 10.0  # How long to stay at ceiling before retesting
+    overbid_cancel_delay: float = 10.0  # How long to wait before cancelling when overbid
+
+settings = Settings()
 
 # =============================================================================
 # DATA MODELS
@@ -63,9 +108,9 @@ class Match:
     active: bool = False
     event_time: Optional[datetime.datetime] = None
     # Per-match settings
-    edge: float = 1.5
-    contracts: int = 30
-    inventory_max: int = 20
+    edge: float = 2.5
+    contracts: int = 5
+    inventory_max: int = 15
     # Order statuses for all 4 positions
     a_yes_status: OrderStatus = None
     a_no_status: OrderStatus = None
@@ -105,9 +150,9 @@ class MatchConfig(BaseModel):
     odds_a: float
     odds_b: float
     name: Optional[str] = None
-    edge: float = 1.5
-    contracts: int = 30
-    inventory_max: int = 20
+    edge: float = 2.5
+    contracts: int = 5
+    inventory_max: int = 15
 
 class UpdateOdds(BaseModel):
     """Update odds for a match."""
@@ -130,12 +175,14 @@ class UpdateSettings(BaseModel):
 matches: dict[str, Match] = {}
 fills: list[Fill] = []
 orders: dict[str, OrderState] = {}  # (match_id, ticker, side) -> OrderState
+overbid_since: dict[str, float] = {}  # order_key -> timestamp when overbid first detected
 client: Optional[KalshiClient] = None
 websockets: list[WebSocket] = []
 trading_task: Optional[asyncio.Task] = None
 
-# Config
-CHECK_INTERVAL = 2.0
+# Config (now using settings object, these are kept for reference)
+# CHECK_INTERVAL = settings.check_interval
+# OVERBID_CANCEL_DELAY = settings.overbid_cancel_delay
 
 # =============================================================================
 # KALSHI CLIENT
@@ -316,7 +363,13 @@ def get_state() -> dict:
             }
             for m in matches.values()
         ],
-        "fills": [asdict(f) for f in fills[-3:]],  # Last 3 fills
+        "fills": [asdict(f) for f in fills[-10:]],  # Last 10 fills
+        "rate": get_request_rate(),
+        "settings": {
+            "check_interval": settings.check_interval,
+            "sticky_reset_secs": settings.sticky_reset_secs,
+            "overbid_cancel_delay": settings.overbid_cancel_delay,
+        },
     }
 
 async def trading_loop():
@@ -343,7 +396,9 @@ async def trading_loop():
 
                 # Refresh orderbooks
                 book_a = get_book_with_depth(match.market_a.ticker)
+                track_request()
                 book_b = get_book_with_depth(match.market_b.ticker)
+                track_request()
 
                 match.market_a.best_bid = book_a["best_bid"]
                 match.market_a.best_ask = book_a["best_ask"]
@@ -365,7 +420,7 @@ async def trading_loop():
         except Exception as e:
             print(f"Trading loop error: {e}")
 
-        await asyncio.sleep(CHECK_INTERVAL)
+        await asyncio.sleep(settings.check_interval)
 
 async def check_fills(match: Match):
     """Check for fills on a match."""
@@ -457,23 +512,23 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
     # When overexposed to B, we can pay up to (100 - avg_cost_B) for A
     avg_cost_a = match.cost_long_a / match.count_long_a if match.count_long_a > 0 else 0
     avg_cost_b = match.cost_long_b / match.count_long_b if match.count_long_b > 0 else 0
-    breakeven_for_b = int(100 - avg_cost_a - 1) if avg_cost_a > 0 else 0  # max we can pay for B side (leave 1c profit)
-    breakeven_for_a = int(100 - avg_cost_b - 1) if avg_cost_b > 0 else 0  # max we can pay for A side (leave 1c profit)
+    # Use ceil on avg_cost to be conservative with fractional costs
+    breakeven_for_b = 100 - math.ceil(avg_cost_a) - 1 - REBAL_FEE_BUFFER_CENTS if avg_cost_a > 0 else 0  # max we can pay for B
+    breakeven_for_a = 100 - math.ceil(avg_cost_b) - 1 - REBAL_FEE_BUFFER_CENTS if avg_cost_b > 0 else 0  # max we can pay for A
 
     # When at inventory limit, use breakeven ceiling for rebalancing
     rebalance_ceiling_b = breakeven_for_b if match.inventory >= inv_max and breakeven_for_b > 0 else None
     rebalance_ceiling_a = breakeven_for_a if match.inventory <= -inv_max and breakeven_for_a > 0 else None
 
-    # Calculate prices - drop to ceiling every 10 seconds
+    # Calculate prices - drop to ceiling periodically based on settings
     import time
-    STICKY_RESET_SECS = 10.0
 
     def get_our_price(order_key: str) -> Optional[int]:
         if order_key not in orders:
             return None
         order = orders[order_key]
-        # If order is older than 10s, return None to force recalc from ceiling
-        if time.time() - order.placed_at > STICKY_RESET_SECS:
+        # If order is older than sticky_reset_secs, return None to force recalc from ceiling
+        if time.time() - order.placed_at > settings.sticky_reset_secs:
             return None
         return order.price
 
@@ -625,22 +680,41 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
 async def place_or_update(match: Match, ticker: str, side: str, is_yes: bool,
                           target_price: int, order_key: str, contracts: int):
     """Place or update an order."""
-    global orders
+    global orders, overbid_since
+    import time
 
     if not client:
         return
 
     current = orders.get(order_key)
 
-    # Cancel if backing off
+    # Handle backing off (target_price == -1 for overbid, -2 for overexposed)
     if target_price < 0:
+        # For overbid (-1), delay cancellation by overbid_cancel_delay seconds
+        if target_price == -1 and current:
+            now = time.time()
+            if order_key not in overbid_since:
+                # First time seeing overbid - record timestamp, keep order
+                overbid_since[order_key] = now
+                return  # Keep order, don't cancel yet
+            elif now - overbid_since[order_key] < settings.overbid_cancel_delay:
+                # Still within delay window - keep order
+                return
+            # Delay expired - fall through to cancel
+
+        # Cancel order (either overexposed, or overbid delay expired)
         if current:
             try:
                 client.cancel_order(current.order_id)
                 del orders[order_key]
             except:
                 pass
+        # Clear overbid tracking
+        overbid_since.pop(order_key, None)
         return
+
+    # Clear overbid tracking when we're back to quoting normally
+    overbid_since.pop(order_key, None)
 
     # No change needed
     if current and current.price == target_price and current.count == contracts:
@@ -785,6 +859,133 @@ async def api_remove_match(match_id: str):
         del matches[match_id]
         await broadcast(get_state())
     return {"ok": True}
+
+@app.delete("/api/matches/all")
+async def api_remove_all_matches():
+    """Remove all matches."""
+    for match_id in list(matches.keys()):
+        await cancel_match_orders(matches[match_id])
+        del matches[match_id]
+    await broadcast(get_state())
+    return {"ok": True}
+
+class UpdateGlobalSettings(BaseModel):
+    """Update global settings."""
+    check_interval: Optional[float] = None
+    sticky_reset_secs: Optional[float] = None
+    overbid_cancel_delay: Optional[float] = None
+
+@app.post("/api/settings")
+async def api_update_settings(update: UpdateGlobalSettings):
+    """Update global timing settings."""
+    if update.check_interval is not None:
+        settings.check_interval = max(0.5, update.check_interval)  # min 0.5s
+    if update.sticky_reset_secs is not None:
+        settings.sticky_reset_secs = max(1.0, update.sticky_reset_secs)
+    if update.overbid_cancel_delay is not None:
+        settings.overbid_cancel_delay = max(1.0, update.overbid_cancel_delay)
+
+    await broadcast(get_state())
+    return {"ok": True, "settings": {
+        "check_interval": settings.check_interval,
+        "sticky_reset_secs": settings.sticky_reset_secs,
+        "overbid_cancel_delay": settings.overbid_cancel_delay,
+    }}
+
+@app.post("/api/kill")
+async def api_kill_all():
+    """Cancel all orders and stop all matches - FAST parallel cancellation."""
+    global orders
+    import concurrent.futures
+
+    # Stop all matches immediately
+    for match in matches.values():
+        match.active = False
+
+    # Collect all order IDs to cancel
+    order_ids = set()
+
+    # From our tracker
+    for order_key, order in list(orders.items()):
+        order_ids.add(order.order_id)
+    orders.clear()
+
+    # From Kalshi's resting orders
+    try:
+        resp = client.get('/portfolio/orders?status=resting')
+        for order in resp.json().get('orders', []):
+            order_ids.add(order['order_id'])
+    except:
+        pass
+
+    # Cancel all in parallel using thread pool
+    cancelled = 0
+    if order_ids:
+        def cancel_one(order_id):
+            try:
+                client.cancel_order(order_id)
+                return True
+            except:
+                return False
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(cancel_one, order_ids))
+            cancelled = sum(results)
+
+    await broadcast(get_state())
+    return {"ok": True, "cancelled": cancelled}
+
+@app.get("/api/markets/lacrosse")
+async def api_lacrosse_markets():
+    """Get available lacrosse markets with odds."""
+    try:
+        matches = scan_lacrosse()
+        return {
+            "markets": [
+                {
+                    "home_team": m.home_team,
+                    "away_team": m.away_team,
+                    "ticker_a": m.ticker_away,  # Away team is ticker A
+                    "ticker_b": m.ticker_home,  # Home team is ticker B
+                    "odds_a": round(m.fair_odds_away, 2),
+                    "odds_b": round(m.fair_odds_home, 2),
+                    "theo_a": m.theo_away,
+                    "theo_b": m.theo_home,
+                    "bookmakers": m.bookmakers,
+                    "commence_time": m.commence_time,
+                }
+                for m in matches
+            ]
+        }
+    except Exception as e:
+        print(f"Error fetching lacrosse markets: {e}")
+        return {"markets": [], "error": str(e)}
+
+@app.get("/api/markets/boxing")
+async def api_boxing_markets():
+    """Get available boxing markets with odds."""
+    try:
+        matches = scan_boxing()
+        return {
+            "markets": [
+                {
+                    "home_team": m.fighter_b,  # Fighter B is "home"
+                    "away_team": m.fighter_a,  # Fighter A is "away"
+                    "ticker_a": m.ticker_a,
+                    "ticker_b": m.ticker_b,
+                    "odds_a": round(m.fair_odds_a, 2),
+                    "odds_b": round(m.fair_odds_b, 2),
+                    "theo_a": m.theo_a,
+                    "theo_b": m.theo_b,
+                    "bookmakers": m.bookmakers,
+                    "commence_time": m.commence_time,
+                }
+                for m in matches
+            ]
+        }
+    except Exception as e:
+        print(f"Error fetching boxing markets: {e}")
+        return {"markets": [], "error": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
