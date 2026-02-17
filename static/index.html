@@ -1072,6 +1072,9 @@
 
         async function removeAll() {
             if (!confirm('Remove all markets?')) return;
+            // Optimistic update
+            state.matches = [];
+            render();
             await fetch('/api/matches/all', { method: 'DELETE' });
         }
 

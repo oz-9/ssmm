@@ -404,7 +404,8 @@ async def broadcast(data: dict):
         try:
             await ws.send_text(message)
         except:
-            websockets.remove(ws)
+            if ws in websockets:
+                websockets.remove(ws)
 
 def get_state() -> dict:
     """Get current state for dashboard."""
