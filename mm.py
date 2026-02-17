@@ -303,30 +303,50 @@ class KalshiWebSocket:
                     await cb(ticker, self._parse_book(ticker))
 
     async def listen(self):
-        """Main loop to receive and process messages."""
-        if not self.ws:
-            await self.connect()
+        """Main loop to receive and process messages with auto-reconnect."""
+        while True:
+            if not self.ws:
+                await self.connect()
 
-        try:
-            async for message in self.ws:
-                try:
-                    msg = json.loads(message)
-                    await self._handle_message(msg)
-                except json.JSONDecodeError:
-                    pass
-        except websockets.ConnectionClosed:
-            print("WebSocket disconnected, reconnecting...")
-            await self.reconnect()
+            try:
+                async for message in self.ws:
+                    try:
+                        msg = json.loads(message)
+                        await self._handle_message(msg)
+                    except json.JSONDecodeError:
+                        pass
+            except websockets.ConnectionClosed as e:
+                print(f"WebSocket disconnected ({e.code}), reconnecting...")
+                self.ws = None
+                await self.reconnect()
+            except Exception as e:
+                print(f"WebSocket error: {e}, reconnecting...")
+                self.ws = None
+                await self.reconnect()
 
     async def reconnect(self):
-        """Reconnect and resubscribe."""
-        await asyncio.sleep(1)
-        tickers = list(self.subscribed_tickers)
-        self.subscribed_tickers.clear()
-        self.orderbooks.clear()
-        await self.connect()
-        if tickers:
-            await self.subscribe(tickers)
+        """Reconnect with exponential backoff."""
+        backoff = 1
+        max_backoff = 60
+
+        while True:
+            try:
+                print(f"Reconnecting in {backoff}s...")
+                await asyncio.sleep(backoff)
+
+                tickers = list(self.subscribed_tickers)
+                self.subscribed_tickers.clear()
+                self.orderbooks.clear()
+
+                await self.connect()
+                if tickers:
+                    await self.subscribe(tickers)
+
+                print("Reconnected successfully")
+                return
+            except Exception as e:
+                print(f"Reconnection failed: {e}")
+                backoff = min(backoff * 2, max_backoff)
 
     async def close(self):
         """Close WebSocket connection."""
