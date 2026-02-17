@@ -21,6 +21,7 @@ from pydantic import BaseModel
 # Import from mm.py
 from mm import (
     KalshiClient,
+    KalshiWebSocket,
     get_book_with_depth,
     calculate_adaptive_price,
     calculate_theo,
@@ -177,6 +178,7 @@ fills: list[Fill] = []
 orders: dict[str, OrderState] = {}  # (match_id, ticker, side) -> OrderState
 overbid_since: dict[str, float] = {}  # order_key -> timestamp when overbid first detected
 client: Optional[KalshiClient] = None
+ws_client: Optional["KalshiWebSocket"] = None
 websockets: list[WebSocket] = []
 trading_task: Optional[asyncio.Task] = None
 
@@ -189,11 +191,12 @@ trading_task: Optional[asyncio.Task] = None
 # =============================================================================
 
 def init_client():
-    """Initialize Kalshi client from config."""
-    global client
+    """Initialize Kalshi REST and WebSocket clients from config."""
+    global client, ws_client
     try:
         from config.config import KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH
         client = KalshiClient(KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH)
+        ws_client = KalshiWebSocket(KALSHI_KEY_ID, KALSHI_PRIVATE_KEY_PATH)
         balance = client.get_balance()
         print(f"Kalshi authenticated. Balance: ${balance.get('balance', 0) / 100:.2f}")
         return True
@@ -310,6 +313,46 @@ def refresh_orderbooks():
         match.market_b.best_bid = book_b["best_bid"]
         match.market_b.best_ask = book_b["best_ask"]
 
+async def on_orderbook_change(ticker: str, book: dict):
+    """Handle orderbook update from WebSocket."""
+    # Find which match this ticker belongs to
+    for match in matches.values():
+        if not match.active:
+            continue
+
+        if ticker == match.market_a.ticker:
+            match.market_a.best_bid = book["best_bid"]
+            match.market_a.best_ask = book["best_ask"]
+            # Trigger quote update for this match
+            await handle_match_update(match)
+            break
+        elif ticker == match.market_b.ticker:
+            match.market_b.best_bid = book["best_bid"]
+            match.market_b.best_ask = book["best_ask"]
+            await handle_match_update(match)
+            break
+
+async def handle_match_update(match: Match):
+    """Process a match when its orderbook changes."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    # Check event time
+    if match.event_time and now >= match.event_time:
+        print(f"[{match.id}] Event started - stopping")
+        match.active = False
+        await cancel_match_orders(match)
+        return
+
+    # Get books from WebSocket cache
+    book_a = ws_client.get_book(match.market_a.ticker) if ws_client else get_book_with_depth(match.market_a.ticker)
+    book_b = ws_client.get_book(match.market_b.ticker) if ws_client else get_book_with_depth(match.market_b.ticker)
+
+    # Update quotes
+    await update_quotes(match, book_a, book_b)
+
+    # Broadcast state to dashboard clients
+    await broadcast(get_state())
+
 # =============================================================================
 # TRADING LOOP
 # =============================================================================
@@ -373,11 +416,20 @@ def get_state() -> dict:
     }
 
 async def trading_loop():
-    """Main trading loop - runs in background."""
+    """Main trading loop - WebSocket driven with periodic tasks."""
     global orders
 
-    print("Trading loop started")
+    print("Trading loop started (WebSocket mode)")
 
+    # Connect WebSocket and register callback
+    if ws_client:
+        ws_client.on_orderbook_change(on_orderbook_change)
+        await ws_client.connect()
+
+    # Start WebSocket listener in background
+    ws_task = asyncio.create_task(ws_client.listen()) if ws_client else None
+
+    # Periodic tasks (inventory sync, fill checks, sticky reset)
     while True:
         try:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -390,36 +442,22 @@ async def trading_loop():
                 if match.event_time and now >= match.event_time:
                     print(f"[{match.id}] Event started - stopping")
                     match.active = False
-                    # Cancel orders for this match
                     await cancel_match_orders(match)
                     continue
 
-                # Refresh orderbooks
-                book_a = get_book_with_depth(match.market_a.ticker)
-                track_request()
-                book_b = get_book_with_depth(match.market_b.ticker)
-                track_request()
-
-                match.market_a.best_bid = book_a["best_bid"]
-                match.market_a.best_ask = book_a["best_ask"]
-                match.market_b.best_bid = book_b["best_bid"]
-                match.market_b.best_ask = book_b["best_ask"]
-
-                # Sync inventory from Kalshi positions
+                # Sync inventory from Kalshi positions (less frequent)
                 match.inventory = calculate_match_inventory(match)
 
-                # Check for fills (for display)
+                # Check for fills
                 await check_fills(match)
 
-                # Update quotes
-                await update_quotes(match, book_a, book_b)
-
-            # Broadcast state
+            # Broadcast state periodically
             await broadcast(get_state())
 
         except Exception as e:
             print(f"Trading loop error: {e}")
 
+        # Periodic check interval (for fills/inventory, not orderbook)
         await asyncio.sleep(settings.check_interval)
 
 async def check_fills(match: Match):
@@ -812,15 +850,23 @@ async def api_add_match(config: MatchConfig):
 @app.post("/api/matches/{match_id}/start")
 async def api_start_match(match_id: str):
     if match_id in matches:
-        matches[match_id].active = True
+        match = matches[match_id]
+        match.active = True
+        # Subscribe to orderbook WebSocket
+        if ws_client:
+            await ws_client.subscribe([match.market_a.ticker, match.market_b.ticker])
         await broadcast(get_state())
     return {"ok": True}
 
 @app.post("/api/matches/{match_id}/stop")
 async def api_stop_match(match_id: str):
     if match_id in matches:
-        matches[match_id].active = False
-        await cancel_match_orders(matches[match_id])
+        match = matches[match_id]
+        match.active = False
+        await cancel_match_orders(match)
+        # Unsubscribe from orderbook WebSocket
+        if ws_client:
+            await ws_client.unsubscribe([match.market_a.ticker, match.market_b.ticker])
         await broadcast(get_state())
     return {"ok": True}
 
