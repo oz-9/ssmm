@@ -8,11 +8,18 @@ import base64
 import datetime
 import time
 import argparse
+import asyncio
+import json
 from dataclasses import dataclass
 from typing import Optional
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
+
+try:
+    import websockets
+except ImportError:
+    websockets = None
 
 
 KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
@@ -117,6 +124,215 @@ class KalshiClient:
             path += f"?ticker={ticker}"
         resp = self.get(path)
         return resp.json().get("market_positions", [])
+
+
+# =============================================================================
+# KALSHI WEBSOCKET
+# =============================================================================
+
+class KalshiWebSocket:
+    """WebSocket client for Kalshi orderbook streams."""
+
+    WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
+
+    def __init__(self, key_id: str, private_key_path: str):
+        self.key_id = key_id
+        with open(private_key_path, "rb") as f:
+            self.private_key = serialization.load_pem_private_key(
+                f.read(), password=None, backend=default_backend()
+            )
+        self.ws = None
+        self.orderbooks: dict[str, dict] = {}  # ticker -> {yes: [[price, qty]], no: [[price, qty]]}
+        self.subscribed_tickers: set[str] = set()
+        self._message_id = 0
+        self._callbacks: list = []  # list of async callbacks on orderbook change
+
+    def _sign(self, message: str) -> str:
+        signature = self.private_key.sign(
+            message.encode('utf-8'),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return base64.b64encode(signature).decode('utf-8')
+
+    def _auth_headers(self) -> dict:
+        timestamp = str(int(datetime.datetime.now().timestamp() * 1000))
+        path = "/trade-api/ws/v2"
+        signature = self._sign(f"{timestamp}GET{path}")
+        return {
+            "KALSHI-ACCESS-KEY": self.key_id,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp,
+            "KALSHI-ACCESS-SIGNATURE": signature,
+        }
+
+    async def connect(self):
+        """Establish WebSocket connection."""
+        if websockets is None:
+            raise ImportError("websockets package is required. Install with: pip install websockets")
+        headers = self._auth_headers()
+        self.ws = await websockets.connect(self.WS_URL, additional_headers=headers)
+        print("Kalshi WebSocket connected")
+
+    async def subscribe(self, tickers: list[str]):
+        """Subscribe to orderbook updates for tickers."""
+        if not self.ws:
+            await self.connect()
+
+        new_tickers = [t for t in tickers if t not in self.subscribed_tickers]
+        if not new_tickers:
+            return
+
+        self._message_id += 1
+        msg = {
+            "id": self._message_id,
+            "cmd": "subscribe",
+            "params": {
+                "channels": ["orderbook_delta"],
+                "market_tickers": new_tickers
+            }
+        }
+        await self.ws.send(json.dumps(msg))
+        self.subscribed_tickers.update(new_tickers)
+        print(f"Subscribed to orderbook: {new_tickers}")
+
+    async def unsubscribe(self, tickers: list[str]):
+        """Unsubscribe from orderbook updates."""
+        if not self.ws:
+            return
+
+        to_unsub = [t for t in tickers if t in self.subscribed_tickers]
+        if not to_unsub:
+            return
+
+        self._message_id += 1
+        msg = {
+            "id": self._message_id,
+            "cmd": "unsubscribe",
+            "params": {
+                "channels": ["orderbook_delta"],
+                "market_tickers": to_unsub
+            }
+        }
+        await self.ws.send(json.dumps(msg))
+        self.subscribed_tickers -= set(to_unsub)
+        for t in to_unsub:
+            self.orderbooks.pop(t, None)
+        print(f"Unsubscribed from orderbook: {to_unsub}")
+
+    def on_orderbook_change(self, callback):
+        """Register callback for orderbook changes. callback(ticker, book_data)"""
+        self._callbacks.append(callback)
+
+    def _parse_book(self, ticker: str) -> dict:
+        """Convert internal orderbook to get_book_with_depth format."""
+        book = self.orderbooks.get(ticker, {"yes": [], "no": []})
+
+        yes_bids = sorted(book.get("yes", []), key=lambda x: x[0], reverse=True)
+        no_bids = sorted(book.get("no", []), key=lambda x: x[0], reverse=True)
+
+        best_yes_bid = yes_bids[0][0] if yes_bids else 0
+        best_yes_bid_qty = yes_bids[0][1] if yes_bids else 0
+        second_yes_bid = yes_bids[1][0] if len(yes_bids) > 1 else 0
+
+        best_no_bid = no_bids[0][0] if no_bids else 0
+        best_no_bid_qty = no_bids[0][1] if no_bids else 0
+        second_no_bid = no_bids[1][0] if len(no_bids) > 1 else 0
+
+        best_yes_ask = 100 - best_no_bid if best_no_bid > 0 else 100
+
+        return {
+            "best_bid": best_yes_bid,
+            "best_bid_qty": best_yes_bid_qty,
+            "second_bid": second_yes_bid,
+            "best_ask": best_yes_ask,
+            "second_ask": 100 - second_no_bid if second_no_bid > 0 else 100,
+            "best_no_bid": best_no_bid,
+            "best_no_bid_qty": best_no_bid_qty,
+            "second_no_bid": second_no_bid,
+        }
+
+    def get_book(self, ticker: str) -> dict:
+        """Get current orderbook for ticker in get_book_with_depth format."""
+        return self._parse_book(ticker)
+
+    async def _handle_message(self, msg: dict):
+        """Process incoming WebSocket message."""
+        msg_type = msg.get("type")
+
+        if msg_type == "orderbook_snapshot":
+            ticker = msg.get("msg", {}).get("market_ticker")
+            if ticker:
+                self.orderbooks[ticker] = {
+                    "yes": [[lvl[0], lvl[1]] for lvl in msg["msg"].get("yes", [])],
+                    "no": [[lvl[0], lvl[1]] for lvl in msg["msg"].get("no", [])]
+                }
+                for cb in self._callbacks:
+                    await cb(ticker, self._parse_book(ticker))
+
+        elif msg_type == "orderbook_delta":
+            data = msg.get("msg", {})
+            ticker = data.get("market_ticker")
+            price = data.get("price")
+            delta = data.get("delta")
+            side = data.get("side")
+
+            if ticker and price is not None and delta is not None and side:
+                if ticker not in self.orderbooks:
+                    self.orderbooks[ticker] = {"yes": [], "no": []}
+
+                book_side = self.orderbooks[ticker][side]
+                # Find existing price level
+                found = False
+                for i, (p, q) in enumerate(book_side):
+                    if p == price:
+                        new_qty = q + delta
+                        if new_qty <= 0:
+                            book_side.pop(i)
+                        else:
+                            book_side[i] = [price, new_qty]
+                        found = True
+                        break
+
+                if not found and delta > 0:
+                    book_side.append([price, delta])
+
+                for cb in self._callbacks:
+                    await cb(ticker, self._parse_book(ticker))
+
+    async def listen(self):
+        """Main loop to receive and process messages."""
+        if not self.ws:
+            await self.connect()
+
+        try:
+            async for message in self.ws:
+                try:
+                    msg = json.loads(message)
+                    await self._handle_message(msg)
+                except json.JSONDecodeError:
+                    pass
+        except websockets.ConnectionClosed:
+            print("WebSocket disconnected, reconnecting...")
+            await self.reconnect()
+
+    async def reconnect(self):
+        """Reconnect and resubscribe."""
+        await asyncio.sleep(1)
+        tickers = list(self.subscribed_tickers)
+        self.subscribed_tickers.clear()
+        self.orderbooks.clear()
+        await self.connect()
+        if tickers:
+            await self.subscribe(tickers)
+
+    async def close(self):
+        """Close WebSocket connection."""
+        if self.ws:
+            await self.ws.close()
+            self.ws = None
 
 
 # =============================================================================
