@@ -180,6 +180,7 @@
             border-bottom: 1px solid #2d2d44;
         }
         .orderbook-label { color: #9d4edd; font-weight: bold; font-size: 11px; }
+        .orderbook-spread { color: #888; font-weight: normal; }
         .orderbook-theo { color: #888; font-size: 10px; }
 
         .orderbook-row {
@@ -762,33 +763,33 @@
                                 <div class="orderbooks">
                                     <div class="orderbook">
                                         <div class="orderbook-header">
-                                            <span class="orderbook-label">${m.market_a.label}</span>
+                                            <span class="orderbook-label">${m.market_a.label} <span class="orderbook-spread">${m.market_a.best_bid}@${m.market_a.best_ask}</span></span>
                                             <span class="orderbook-theo">theo ${m.market_a.theo.toFixed(1)}c</span>
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">yes</span>
-                                            <span class="orderbook-best">${m.market_a.second_bid || 0}-${m.market_a.best_bid}@${m.market_a.best_ask}-${m.market_a.second_ask || 0}</span>
+                                            <span class="orderbook-best">${m.market_a.second_bid || 0}-${m.market_a.best_bid}</span>
                                             ${renderOrder(m.orders.a_yes, m.active)}
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">no</span>
-                                            <span class="orderbook-best">${100 - (m.market_a.second_ask || 100)}-${100 - m.market_a.best_ask}@${100 - m.market_a.best_bid}-${100 - (m.market_a.second_bid || 0)}</span>
+                                            <span class="orderbook-best">${100 - (m.market_a.second_ask || 100)}-${100 - m.market_a.best_ask}</span>
                                             ${renderOrder(m.orders.a_no, m.active)}
                                         </div>
                                     </div>
                                     <div class="orderbook">
                                         <div class="orderbook-header">
-                                            <span class="orderbook-label">${m.market_b.label}</span>
+                                            <span class="orderbook-label">${m.market_b.label} <span class="orderbook-spread">${m.market_b.best_bid}@${m.market_b.best_ask}</span></span>
                                             <span class="orderbook-theo">theo ${m.market_b.theo.toFixed(1)}c</span>
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">yes</span>
-                                            <span class="orderbook-best">${m.market_b.second_bid || 0}-${m.market_b.best_bid}@${m.market_b.best_ask}-${m.market_b.second_ask || 0}</span>
+                                            <span class="orderbook-best">${m.market_b.second_bid || 0}-${m.market_b.best_bid}</span>
                                             ${renderOrder(m.orders.b_yes, m.active)}
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">no</span>
-                                            <span class="orderbook-best">${100 - (m.market_b.second_ask || 100)}-${100 - m.market_b.best_ask}@${100 - m.market_b.best_bid}-${100 - (m.market_b.second_bid || 0)}</span>
+                                            <span class="orderbook-best">${100 - (m.market_b.second_ask || 100)}-${100 - m.market_b.best_ask}</span>
                                             ${renderOrder(m.orders.b_no, m.active)}
                                         </div>
                                     </div>
