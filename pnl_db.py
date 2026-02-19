@@ -183,3 +183,54 @@ def delete_hedge(hedge_id: int) -> bool:
     with get_db() as conn:
         cursor = conn.execute("DELETE FROM hedges WHERE id = ?", (hedge_id,))
         return cursor.rowcount > 0
+
+
+def upsert_match(
+    match_id: str,
+    ticker_a: str,
+    ticker_b: str,
+    theo_a: Optional[int] = None,
+    theo_b: Optional[int] = None,
+    event_time: Optional[str] = None,
+    category: Optional[str] = None,
+):
+    """Insert or update a match."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO pnl_matches (id, ticker_a, ticker_b, theo_a, theo_b, event_time, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                theo_a = COALESCE(excluded.theo_a, pnl_matches.theo_a),
+                theo_b = COALESCE(excluded.theo_b, pnl_matches.theo_b),
+                event_time = COALESCE(excluded.event_time, pnl_matches.event_time),
+                category = COALESCE(excluded.category, pnl_matches.category)
+            """,
+            (match_id, ticker_a, ticker_b, theo_a, theo_b, event_time, category)
+        )
+
+
+def mark_match_settled(match_id: str):
+    """Mark a match as settled."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE pnl_matches SET settled_at = ? WHERE id = ?",
+            (datetime.utcnow().isoformat(), match_id)
+        )
+
+
+def get_match(match_id: str) -> Optional[dict]:
+    """Get a match by ID."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM pnl_matches WHERE id = ?",
+            (match_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_all_matches() -> list[dict]:
+    """Get all matches."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM pnl_matches ORDER BY event_time DESC").fetchall()
+        return [dict(row) for row in rows]
