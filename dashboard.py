@@ -214,6 +214,7 @@ class Fill:
     count: int
     complete_set: bool = False  # True if this completes an arb
     profit: Optional[int] = None  # profit in cents if complete
+    fill_id: Optional[str] = None  # Unique ID to prevent duplicates
 
 class MatchConfig(BaseModel):
     """Config for adding a new match."""
@@ -263,6 +264,7 @@ orders: dict[str, OrderState] = {}  # (match_id, ticker, side) -> OrderState
 order_locks: dict[str, asyncio.Lock] = {}  # Per-order-key locks for race condition prevention
 order_locks_lock: Optional[asyncio.Lock] = None  # Lock for creating new order locks
 overbid_since: dict[str, float] = {}  # order_key -> timestamp when overbid first detected
+sticky_price_since: dict[str, tuple[int, float]] = {}  # order_key -> (price, timestamp) when we first hit this price
 client: Optional[KalshiClient] = None
 ws_client: Optional["KalshiWebSocket"] = None
 websockets: list[WebSocket] = []
@@ -363,7 +365,11 @@ def sync_match_cost_from_fills(match: "Match"):
             side = f.get("side")  # "yes" or "no"
             action = f.get("action")  # "buy" or "sell"
             count = f.get("count", 0)
-            price = f.get("yes_price") if side == "yes" else (100 - f.get("yes_price", 0))
+            # For YES fills, use yes_price. For NO fills, use no_price directly
+            if side == "yes":
+                price = f.get("yes_price", 0)
+            else:
+                price = f.get("no_price") or (100 - f.get("yes_price", 0))
 
             # Only count buys (sells would reduce position)
             if action == "buy":
@@ -381,7 +387,11 @@ def sync_match_cost_from_fills(match: "Match"):
             side = f.get("side")
             action = f.get("action")
             count = f.get("count", 0)
-            price = f.get("yes_price") if side == "yes" else (100 - f.get("yes_price", 0))
+            # For YES fills, use yes_price. For NO fills, use no_price directly
+            if side == "yes":
+                price = f.get("yes_price", 0)
+            else:
+                price = f.get("no_price") or (100 - f.get("yes_price", 0))
 
             if action == "buy":
                 if side == "yes":
@@ -405,6 +415,108 @@ def sync_match_cost_from_fills(match: "Match"):
 
     except Exception as e:
         print(f"[{match.id}] Failed to sync costs: {e}")
+
+
+def load_recent_fills():
+    """Load fills from the past hour from Kalshi."""
+    global fills
+
+    if not client:
+        return
+
+    try:
+        # Get fills from the past hour
+        one_hour_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+        min_ts = int(one_hour_ago.timestamp())
+
+        resp = client.get(f"/portfolio/fills?min_ts={min_ts}&limit=200")
+        kalshi_fills = resp.json().get("fills", [])
+
+        if not kalshi_fills:
+            return
+
+        # Track existing fill IDs to avoid duplicates
+        existing_ids = {f.fill_id for f in fills if f.fill_id}
+
+        new_fills = []
+        for f in kalshi_fills:
+            fill_id = f.get("trade_id")
+            if fill_id in existing_ids:
+                continue
+
+            ticker = f.get("ticker", "")
+            side = f.get("side", "")  # "yes" or "no"
+            action = f.get("action", "")  # "buy" or "sell"
+            count = f.get("count", 0)
+
+            # Get correct price
+            if side == "yes":
+                price = f.get("yes_price", 0)
+            else:
+                price = f.get("no_price") or (100 - f.get("yes_price", 0))
+
+            # Parse timestamp and convert to local time
+            created_time = f.get("created_time", "")
+            try:
+                dt = datetime.datetime.fromisoformat(created_time.replace("Z", "+00:00"))
+                # Convert to local time
+                local_dt = dt.astimezone()
+                timestamp = local_dt.strftime("%H:%M:%S")
+            except:
+                timestamp = created_time[:8] if len(created_time) >= 8 else "??:??:??"
+
+            # Find match for this ticker or derive from ticker
+            label = ticker.split("-")[-1] if "-" in ticker else ticker[:6]
+            match_id = None
+            for m in matches.values():
+                if ticker == m.market_a.ticker:
+                    match_id = m.id
+                    label = m.market_a.label
+                    break
+                elif ticker == m.market_b.ticker:
+                    match_id = m.id
+                    label = m.market_b.label
+                    break
+
+            # If no match found, derive match ID from ticker's event part
+            # e.g., KXNCAAMLAXGAME-26FEB19JOHMRQ-JOH -> JOHvMRQ
+            if not match_id:
+                parts = ticker.split("-")
+                if len(parts) >= 2:
+                    # Event part like "26FEB19JOHMRQ" contains both team codes
+                    event_part = parts[1]
+                    # Extract team codes - usually last 6 chars are two 3-char codes
+                    if len(event_part) >= 6:
+                        team_codes = event_part[-6:]  # e.g., "JOHMRQ"
+                        team_a = team_codes[:3]  # "JOH"
+                        team_b = team_codes[3:]  # "MRQ"
+                        match_id = f"{team_a}v{team_b}"
+                    else:
+                        match_id = event_part
+                else:
+                    match_id = label
+
+            # Only include buys (our fills as maker)
+            if action == "buy":
+                new_fills.append(Fill(
+                    timestamp=timestamp,
+                    match_id=match_id,
+                    side=f"{label} {side.upper()}",
+                    price=price,
+                    count=count,
+                    fill_id=fill_id,
+                ))
+
+        # Sort by timestamp and add to fills list
+        if new_fills:
+            # Add new fills at the beginning (oldest first)
+            fills = new_fills + fills
+            # Sort by timestamp
+            fills.sort(key=lambda f: f.timestamp)
+            print(f"Loaded {len(new_fills)} recent fills from Kalshi")
+
+    except Exception as e:
+        print(f"Failed to load recent fills: {e}")
 
 
 # =============================================================================
@@ -769,7 +881,12 @@ async def on_fill(fill_data: dict):
     ticker = fill_data.get("market_ticker")
     order_id = fill_data.get("order_id")
     side = fill_data.get("side")  # "yes" or "no"
-    price = fill_data.get("yes_price") if side == "yes" else fill_data.get("no_price", fill_data.get("yes_price"))
+    # For YES fills, use yes_price. For NO fills, use no_price (which is 100 - yes_price)
+    if side == "yes":
+        price = fill_data.get("yes_price", 0)
+    else:
+        # Prefer no_price if available, otherwise calculate from yes_price
+        price = fill_data.get("no_price") or (100 - fill_data.get("yes_price", 0))
     count = fill_data.get("count", 0)
     post_position = fill_data.get("post_position", 0)
 
@@ -793,12 +910,20 @@ async def on_fill(fill_data: dict):
         # Record fill for display
         label = match.market_a.label if ticker == match.market_a.ticker else match.market_b.label
         fill_time = datetime.datetime.now().strftime("%H:%M:%S")
+        fill_id = fill_data.get("trade_id", f"{ticker}_{side}_{fill_time}")
+
+        # Check for duplicate
+        existing_ids = {f.fill_id for f in fills if f.fill_id}
+        if fill_id in existing_ids:
+            return  # Already have this fill
+
         fill = Fill(
             timestamp=fill_time,
             match_id=match.id,
             side=f"{label} {side.upper()}",
             price=price,
             count=count,
+            fill_id=fill_id,
         )
         fills.append(fill)
         print(f"[{match.id}] FILL (WS): {fill.side} {count}@{price}c")
@@ -821,10 +946,31 @@ async def on_fill(fill_data: dict):
         match.last_fill_time = fill_time
         match.last_fill_desc = f"{label} {side.upper()} {count}@{price}c"
 
-        # Remove filled order from tracking
+        # Update order tracking - only remove if fully filled
         order_key = f"{match.id}:{ticker}:{side}"
         if order_key in orders:
-            del orders[order_key]
+            order = orders[order_key]
+            order.filled += count
+            remaining = order.count - order.filled
+            if remaining <= 0:
+                # Fully filled - remove from tracking
+                del orders[order_key]
+                print(f"[{match.id}] Order fully filled, removed from tracking")
+            else:
+                # Partial fill - keep tracking with updated remaining
+                print(f"[{match.id}] Partial fill: {order.filled}/{order.count}, {remaining} remaining")
+
+        # Update inventory from the fill
+        old_inv = match.inventory
+        if (ticker == match.market_a.ticker and side == "yes") or \
+           (ticker == match.market_b.ticker and side == "no"):
+            # Going long A
+            match.inventory += count
+        else:
+            # Going long B
+            match.inventory -= count
+        if match.inventory != old_inv:
+            print(f"[{match.id}] Inventory updated: {old_inv} -> {match.inventory}")
 
         # Broadcast updated state
         await broadcast(get_state())
@@ -912,7 +1058,7 @@ def get_state() -> dict:
             }
             for m in matches.values()
         ],
-        "fills": [asdict(f) for f in fills[-10:]],  # Last 10 fills
+        "fills": [asdict(f) for f in fills[-50:]],  # Last 50 fills (past hour)
         "settings": {
             "check_interval": settings.check_interval,
             "sticky_reset_secs": settings.sticky_reset_secs,
@@ -936,8 +1082,7 @@ async def trading_loop():
     # Start WebSocket listener in background
     ws_task = asyncio.create_task(ws_client.listen()) if ws_client else None
 
-    # Periodic tasks (event time checks, state broadcast)
-    # Fills and positions now come via WebSocket - no polling needed
+    # Periodic tasks (event time checks, state broadcast, fill backup check)
     while True:
         try:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -953,6 +1098,9 @@ async def trading_loop():
                     await cancel_match_orders(match)
                     continue
 
+            # Backup: poll for fills via REST (in case WebSocket missed them)
+            await check_recent_fills()
+
             # Broadcast state periodically
             await broadcast(get_state())
 
@@ -961,6 +1109,93 @@ async def trading_loop():
 
         # Periodic check interval (for fills/inventory, not orderbook)
         await asyncio.sleep(settings.check_interval)
+
+
+# Track last fill check time for efficient polling
+_last_fill_check_ts: int = 0
+
+
+async def check_recent_fills():
+    """Check for any fills in the last minute as a WebSocket backup."""
+    global fills, _last_fill_check_ts
+
+    if not client:
+        return
+
+    try:
+        # Only fetch fills since last check (or last minute on first run)
+        now_ts = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        min_ts = _last_fill_check_ts if _last_fill_check_ts > 0 else now_ts - 60
+        _last_fill_check_ts = now_ts
+
+        resp = await asyncio.to_thread(client.get, f"/portfolio/fills?min_ts={min_ts}&limit=50")
+        recent_fills = resp.json().get("fills", [])
+
+        if not recent_fills:
+            return
+
+        # Track existing fill IDs to avoid duplicates
+        existing_ids = {f.fill_id for f in fills if f.fill_id}
+
+        for f in recent_fills:
+            fill_id = f.get("trade_id")
+            if fill_id in existing_ids:
+                continue
+
+            ticker = f.get("ticker", "")
+            side = f.get("side", "")
+            action = f.get("action", "")
+            count = f.get("count", 0)
+
+            if action != "buy":
+                continue
+
+            # Get correct price
+            if side == "yes":
+                price = f.get("yes_price", 0)
+            else:
+                price = f.get("no_price") or (100 - f.get("yes_price", 0))
+
+            # Find match for this ticker
+            for match in matches.values():
+                if ticker not in [match.market_a.ticker, match.market_b.ticker]:
+                    continue
+
+                # This fill wasn't caught by WebSocket!
+                label = match.market_a.label if ticker == match.market_a.ticker else match.market_b.label
+                print(f"[{match.id}] FILL (REST backup): {label} {side.upper()} {count}@{price}c")
+
+                # Update cost tracking
+                if (ticker == match.market_a.ticker and side == "yes") or \
+                   (ticker == match.market_b.ticker and side == "no"):
+                    match.cost_long_a += count * price
+                    match.count_long_a += count
+                    match.inventory += count
+                else:
+                    match.cost_long_b += count * price
+                    match.count_long_b += count
+                    match.inventory -= count
+
+                # Record fill
+                fill_time = datetime.datetime.now().strftime("%H:%M:%S")
+                new_fill = Fill(
+                    timestamp=fill_time,
+                    match_id=match.id,
+                    side=f"{label} {side.upper()}",
+                    price=price,
+                    count=count,
+                    fill_id=fill_id,
+                )
+                fills.append(new_fill)
+                existing_ids.add(fill_id)
+
+                match.last_fill_time = fill_time
+                match.last_fill_desc = f"{label} {side.upper()} {count}@{price}c"
+                break
+
+    except Exception as e:
+        print(f"Error checking recent fills: {e}")
+
 
 async def check_fills(match: Match):
     """Check for fills on a match."""
@@ -1068,8 +1303,20 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
         if order_key not in orders:
             return None, False
         order = orders[order_key]
-        # Check if it's time for a retest (been at ceiling too long)
-        is_retest = time.time() - order.placed_at > settings.sticky_reset_secs
+        # Check if it's time for a retest using sticky_price_since (persists across order replacements)
+        if order_key in sticky_price_since:
+            sticky_price, sticky_time = sticky_price_since[order_key]
+            if sticky_price == order.price:
+                # We've been at this price since sticky_time
+                is_retest = time.time() - sticky_time > settings.sticky_reset_secs
+            else:
+                # Price changed, reset sticky tracking
+                sticky_price_since[order_key] = (order.price, time.time())
+                is_retest = False
+        else:
+            # First time seeing this order, start tracking
+            sticky_price_since[order_key] = (order.price, time.time())
+            is_retest = False
         return order.price, is_retest
 
     label_a = match.market_a.label
@@ -1226,7 +1473,7 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
 async def place_or_update(match: Match, ticker: str, side: str, is_yes: bool,
                           target_price: int, order_key: str, contracts: int):
     """Place or update an order. Uses per-order-key lock to prevent race conditions."""
-    global orders, overbid_since, order_locks, order_locks_lock
+    global orders, overbid_since, order_locks, order_locks_lock, sticky_price_since
     import time
 
     if not client:
@@ -1264,16 +1511,20 @@ async def place_or_update(match: Match, ticker: str, side: str, is_yes: bool,
                     del orders[order_key]
                 except:
                     pass
-            # Clear overbid tracking
+            # Clear overbid and sticky tracking
             overbid_since.pop(order_key, None)
+            sticky_price_since.pop(order_key, None)
             return
 
         # Clear overbid tracking when we're back to quoting normally
         overbid_since.pop(order_key, None)
 
-        # No change needed
-        if current and current.price == target_price and current.count == contracts:
-            return
+        # No change needed if price matches and we have enough remaining
+        if current:
+            remaining = current.count - current.filled
+            if current.price == target_price and remaining > 0:
+                # Still have orders at the right price, no change needed
+                return
 
         # Cancel existing
         if current:
@@ -1296,6 +1547,12 @@ async def place_or_update(match: Match, ticker: str, side: str, is_yes: bool,
 
         order_id = result.get("order", {}).get("order_id")
         if order_id:
+            # Track if this is a new price level for sticky tracking
+            old_price = current.price if current else None
+            if old_price != target_price:
+                # Price changed - reset sticky time
+                sticky_price_since[order_key] = (target_price, time.time())
+
             orders[order_key] = OrderState(
                 order_id=order_id,
                 ticker=ticker,
@@ -1338,6 +1595,9 @@ async def lifespan(app: FastAPI):
 
     # Init Kalshi client
     init_client()
+
+    # Load recent fills from past hour
+    load_recent_fills()
 
     # Start trading loop
     trading_task = asyncio.create_task(trading_loop())
@@ -1598,12 +1858,29 @@ async def api_get_match_pnl(match_id: str):
     return pnl
 
 
+def get_mid_price(ticker: str) -> int:
+    """Get mid price for a ticker (best_bid + best_ask) / 2."""
+    try:
+        book = get_book_with_depth(ticker)
+        best_bid = book.get("best_bid", 0)
+        best_ask = book.get("best_ask", 0)
+        if best_bid > 0 and best_ask > 0:
+            return (best_bid + best_ask) // 2
+        elif best_bid > 0:
+            return best_bid
+        elif best_ask > 0:
+            return best_ask
+        return 50  # Default to 50 if no book
+    except:
+        return 50  # Default to 50 on error
+
+
 @app.get("/api/pnl/summary")
 async def api_get_pnl_summary(period: str = "daily"):
-    """Get aggregated P&L summary."""
+    """Get aggregated P&L summary including open positions with market value."""
     if period not in ("daily", "weekly", "monthly"):
         return {"error": "Invalid period. Use 'daily', 'weekly', or 'monthly'"}
-    return {"summary": pnl_db.get_pnl_summary(period)}
+    return {"summary": pnl_db.get_pnl_summary(period, get_mid_price=get_mid_price)}
 
 
 @app.post("/api/hedges")

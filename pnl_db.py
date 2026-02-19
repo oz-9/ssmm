@@ -72,6 +72,7 @@ def init_db():
                 theo_b INTEGER,
                 event_time TEXT,
                 settled_at TEXT,
+                result_a TEXT,
                 category TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_pnl_matches_ticker_a ON pnl_matches(ticker_a);
@@ -210,12 +211,21 @@ def upsert_match(
         )
 
 
-def mark_match_settled(match_id: str):
-    """Mark a match as settled."""
+def mark_match_settled(match_id: str, result_a: str = None):
+    """Mark a match as settled with result ('yes' or 'no' for ticker_a)."""
     with get_db() as conn:
         conn.execute(
-            "UPDATE pnl_matches SET settled_at = ? WHERE id = ?",
-            (datetime.utcnow().isoformat(), match_id)
+            "UPDATE pnl_matches SET settled_at = ?, result_a = ? WHERE id = ?",
+            (datetime.utcnow().isoformat(), result_a, match_id)
+        )
+
+
+def update_match_result(match_id: str, result_a: str):
+    """Update match result ('yes' = ticker_a won, 'no' = ticker_b won)."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE pnl_matches SET result_a = ?, settled_at = COALESCE(settled_at, ?) WHERE id = ?",
+            (result_a, datetime.utcnow().isoformat(), match_id)
         )
 
 
@@ -236,33 +246,35 @@ def get_all_matches() -> list[dict]:
         return [dict(row) for row in rows]
 
 
-def calculate_match_pnl(match_id: str, theo_a: int, theo_b: int) -> dict:
+def calculate_match_pnl(match_id: str, theo_a: int = None, theo_b: int = None,
+                        get_mid_price: callable = None) -> dict:
     """
     Calculate P&L breakdown for a match.
 
+    Args:
+        match_id: The match ID
+        theo_a: Theo for side A (optional, uses stored value)
+        theo_b: Theo for side B (optional, uses stored value)
+        get_mid_price: Optional callback(ticker) -> int that returns mid price in cents.
+                       Used to calculate AV for open positions based on market value.
+
     Returns:
         {
-            "arb_profit": int,        # cents from completed pairs
-            "arb_pairs": int,         # number of paired contracts
-            "leftover_a": int,        # unpaired contracts long A
-            "leftover_b": int,        # unpaired contracts long B
-            "leftover_cost_a": int,   # cost basis for leftover A
-            "leftover_cost_b": int,   # cost basis for leftover B
-            "leftover_ev": int,       # theoretical EV in cents
-            "fees": int,              # total fees in cents
-            "hedge_pnl": float,       # hedge P&L in USD
-            "fills_a": list,          # fills going long A
-            "fills_b": list,          # fills going long B
+            "settled": bool,      # whether match has settled
+            "arb": int,           # guaranteed profit from paired contracts (cents)
+            "ev": int,            # expected profit from leftover (cents)
+            "av": int,            # actual/market value profit from leftover (cents)
+            "delta": int,         # av - ev (cents)
+            "hedge": float,       # hedge P&L (USD)
+            "fees": int,          # total fees (cents)
+            "pnl": float,         # net = arb + av + hedge - fees (USD)
+            "pairs": int,         # number of paired contracts
+            "leftover_a": int,    # unpaired contracts long A
+            "leftover_b": int,    # unpaired contracts long B
         }
     """
     fills = get_fills_for_match(match_id)
     hedges = get_hedges_for_match(match_id)
-
-    # Separate fills by direction
-    # Long A = buy YES on ticker_a OR buy NO on ticker_b
-    # Long B = buy YES on ticker_b OR buy NO on ticker_a
-    fills_a = []  # (price, count, fee)
-    fills_b = []
 
     match = get_match(match_id)
     if not match:
@@ -270,174 +282,384 @@ def calculate_match_pnl(match_id: str, theo_a: int, theo_b: int) -> dict:
 
     ticker_a = match["ticker_a"]
     ticker_b = match["ticker_b"]
+    result_a = match.get("result_a")  # 'yes' or 'no' or None
+
+    # Use stored theo or default to 50
+    if theo_a is None:
+        theo_a = match.get("theo_a") or 50
+    if theo_b is None:
+        theo_b = match.get("theo_b") or 50
+
+    # Separate fills by direction
+    # Long A = buy YES on ticker_a OR buy NO on ticker_b
+    # Long B = buy YES on ticker_b OR buy NO on ticker_a
+    fills_a = []
+    fills_b = []
+    total_fees = 0
 
     for f in fills:
-        fee = f["fee_cost"] or 0
+        total_fees += f["fee_cost"] or 0
+        entry = {"price": f["price"], "count": f["count"], "ticker": f["ticker"], "side": f["side"]}
         if (f["ticker"] == ticker_a and f["side"] == "yes") or \
            (f["ticker"] == ticker_b and f["side"] == "no"):
-            fills_a.append({"price": f["price"], "count": f["count"], "fee": fee})
+            fills_a.append(entry)
         else:
-            fills_b.append({"price": f["price"], "count": f["count"], "fee": fee})
+            fills_b.append(entry)
 
-    # Pair fills FIFO
     total_a = sum(f["count"] for f in fills_a)
     total_b = sum(f["count"] for f in fills_b)
-    paired = min(total_a, total_b)
+    pairs = min(total_a, total_b)
 
-    # Calculate arb profit from paired contracts
-    arb_profit = 0
-    cost_a = 0
-    cost_b = 0
-    remaining_a = paired
-    remaining_b = paired
-
-    # Sum costs for paired portion
+    # ARB: profit from paired contracts (FIFO)
+    cost_a_paired = 0
+    remaining = pairs
     for f in fills_a:
-        take = min(f["count"], remaining_a)
-        cost_a += take * f["price"]
-        remaining_a -= take
-        if remaining_a == 0:
+        take = min(f["count"], remaining)
+        cost_a_paired += take * f["price"]
+        remaining -= take
+        if remaining == 0:
             break
 
+    cost_b_paired = 0
+    remaining = pairs
     for f in fills_b:
-        take = min(f["count"], remaining_b)
-        cost_b += take * f["price"]
-        remaining_b -= take
-        if remaining_b == 0:
+        take = min(f["count"], remaining)
+        cost_b_paired += take * f["price"]
+        remaining -= take
+        if remaining == 0:
             break
 
-    arb_profit = (100 * paired) - cost_a - cost_b
+    arb = (100 * pairs) - cost_a_paired - cost_b_paired
 
-    # Calculate leftover
-    leftover_a = total_a - paired
-    leftover_b = total_b - paired
+    # LEFTOVER: unpaired contracts
+    leftover_a = total_a - pairs
+    leftover_b = total_b - pairs
 
-    # Leftover cost basis
+    # Leftover cost (FIFO - skip paired portion)
     leftover_cost_a = 0
-    leftover_cost_b = 0
-    skip_a = paired
-    skip_b = paired
-
+    skip = pairs
     for f in fills_a:
-        if skip_a >= f["count"]:
-            skip_a -= f["count"]
+        if skip >= f["count"]:
+            skip -= f["count"]
         else:
-            take = f["count"] - skip_a
+            take = f["count"] - skip
             leftover_cost_a += take * f["price"]
-            skip_a = 0
+            skip = 0
 
+    leftover_cost_b = 0
+    skip = pairs
     for f in fills_b:
-        if skip_b >= f["count"]:
-            skip_b -= f["count"]
+        if skip >= f["count"]:
+            skip -= f["count"]
         else:
-            take = f["count"] - skip_b
+            take = f["count"] - skip
             leftover_cost_b += take * f["price"]
-            skip_b = 0
+            skip = 0
 
-    # Leftover theoretical EV
-    leftover_ev = int(leftover_a * theo_a + leftover_b * theo_b)
+    # EV = (theo - cost/count) * count = theo*count - cost
+    ev = (theo_a * leftover_a - leftover_cost_a) + (theo_b * leftover_b - leftover_cost_b)
 
-    # Total fees
-    fees = sum(f["fee"] for f in fills_a) + sum(f["fee"] for f in fills_b)
+    # AV = actual/market value - cost for leftover
+    if result_a:
+        # Settled: use actual payout
+        if result_a == "yes":
+            payout_a = 100 * leftover_a
+            payout_b = 0
+        else:
+            payout_a = 0
+            payout_b = 100 * leftover_b
+        av = (payout_a - leftover_cost_a) + (payout_b - leftover_cost_b)
+    elif get_mid_price and (leftover_a > 0 or leftover_b > 0):
+        # Open: use market value (mid price)
+        try:
+            mid_a = get_mid_price(ticker_a) if leftover_a > 0 else 0
+            mid_b = get_mid_price(ticker_b) if leftover_b > 0 else 0
+            market_value_a = mid_a * leftover_a
+            market_value_b = mid_b * leftover_b
+            av = (market_value_a - leftover_cost_a) + (market_value_b - leftover_cost_b)
+        except:
+            av = 0  # Fallback if price fetch fails
+    else:
+        av = 0
+
+    delta = av - ev
 
     # Hedge P&L
-    hedge_pnl = 0.0
+    hedge = 0.0
     for h in hedges:
         if h["outcome"] == "win":
-            hedge_pnl += h["amount_usd"] * (h["odds"] - 1)
+            hedge += h["amount_usd"] * (h["odds"] - 1)
         elif h["outcome"] == "loss":
-            hedge_pnl -= h["amount_usd"]
-        # push = 0
+            hedge -= h["amount_usd"]
+
+    # Net PnL = arb + av + hedge - fees (in USD)
+    pnl = arb / 100 + av / 100 + hedge - total_fees / 100
 
     return {
-        "arb_profit": arb_profit,
-        "arb_pairs": paired,
+        "settled": result_a is not None,
+        "arb": arb,
+        "ev": ev,
+        "av": av,
+        "delta": delta,
+        "hedge": hedge,
+        "fees": total_fees,
+        "pnl": pnl,
+        "pairs": pairs,
         "leftover_a": leftover_a,
         "leftover_b": leftover_b,
-        "leftover_cost_a": leftover_cost_a,
-        "leftover_cost_b": leftover_cost_b,
-        "leftover_ev": leftover_ev,
-        "fees": fees,
-        "hedge_pnl": hedge_pnl,
-        "total_fills_a": total_a,
-        "total_fills_b": total_b,
     }
 
 
-def get_pnl_summary(period: str = "daily") -> list[dict]:
+def get_pnl_summary(period: str = "daily", get_mid_price: callable = None) -> list[dict]:
     """
-    Get aggregated P&L by period.
+    Get aggregated P&L by period, calculated per-fill per-day.
 
     Args:
         period: 'daily', 'weekly', or 'monthly'
+        get_mid_price: Optional callback(ticker) -> int for market value of open positions
 
     Returns list of:
         {
-            "period": str,          # date/week/month label
-            "arb_profit": int,
-            "leftover_ev": int,
-            "fees": int,
-            "hedge_pnl": float,
-            "net_profit": float,    # arb_profit - fees + hedge_pnl (excludes leftover until settled)
+            "period": str,
+            "arb": float,       # arb profit credited when pairs complete (USD)
+            "ev": float,        # expected profit from fills that day (USD)
+            "av": float,        # actual/market value from fills that day (USD)
+            "delta": float,     # av - ev (USD)
+            "hedge": float,     # hedge P&L (USD)
+            "fees": float,      # fees from fills that day (USD)
+            "pnl": float,       # net = arb + av + hedge - fees (USD)
         }
     """
-    with get_db() as conn:
-        # Get all matches with their P&L
-        matches = conn.execute("""
-            SELECT m.id, m.ticker_a, m.ticker_b, m.theo_a, m.theo_b, m.event_time
-            FROM pnl_matches m
-            WHERE EXISTS (SELECT 1 FROM fills f WHERE f.match_id = m.id)
-            ORDER BY m.event_time
-        """).fetchall()
-
-    # Group by period
     from collections import defaultdict
+
+    def get_period_key(created_time: str) -> str:
+        try:
+            dt = datetime.fromisoformat(created_time.replace("Z", "+00:00"))
+            if period == "daily":
+                return dt.strftime("%Y-%m-%d")
+            elif period == "weekly":
+                return f"{dt.year}-W{dt.isocalendar()[1]:02d}"
+            else:  # monthly
+                return dt.strftime("%Y-%m")
+        except:
+            return "unknown"
+
     periods = defaultdict(lambda: {
-        "arb_profit": 0,
-        "leftover_ev": 0,
-        "fees": 0,
-        "hedge_pnl": 0.0,
+        "arb": 0, "ev": 0, "av": 0, "hedge": 0.0, "fees": 0,
     })
 
+    # Process each match
+    matches = get_all_matches()
     for m in matches:
         match_id = m["id"]
-        theo_a = m["theo_a"] or 50
-        theo_b = m["theo_b"] or 50
-        event_time = m["event_time"] or ""
+        ticker_a = m["ticker_a"]
+        ticker_b = m["ticker_b"]
+        theo_a = m.get("theo_a") or 50
+        theo_b = m.get("theo_b") or 50
+        result_a = m.get("result_a")
 
-        pnl = calculate_match_pnl(match_id, theo_a, theo_b)
+        fills = get_fills_for_match(match_id)
+        if not fills:
+            continue
 
-        # Determine period key
-        if event_time:
+        # Get mid prices for open positions
+        mid_a = None
+        mid_b = None
+        if not result_a and get_mid_price:
             try:
-                dt = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
-                if period == "daily":
-                    key = dt.strftime("%Y-%m-%d")
-                elif period == "weekly":
-                    key = f"{dt.year}-W{dt.isocalendar()[1]:02d}"
-                else:  # monthly
-                    key = dt.strftime("%Y-%m")
+                mid_a = get_mid_price(ticker_a)
+                mid_b = get_mid_price(ticker_b)
             except:
-                key = "unknown"
-        else:
-            key = "unknown"
+                pass
 
-        periods[key]["arb_profit"] += pnl.get("arb_profit", 0)
-        periods[key]["leftover_ev"] += pnl.get("leftover_ev", 0)
-        periods[key]["fees"] += pnl.get("fees", 0)
-        periods[key]["hedge_pnl"] += pnl.get("hedge_pnl", 0.0)
+        # Separate fills by direction with their dates
+        # Long A = buy YES on ticker_a OR buy NO on ticker_b
+        fills_a = []  # [(period_key, price, count, fee)]
+        fills_b = []
 
-    # Convert to list with net profit
+        for f in fills:
+            key = get_period_key(f["created_time"])
+            fee = f["fee_cost"] or 0
+            entry = (key, f["price"], f["count"], fee)
+
+            if (f["ticker"] == ticker_a and f["side"] == "yes") or \
+               (f["ticker"] == ticker_b and f["side"] == "no"):
+                fills_a.append(entry)
+            else:
+                fills_b.append(entry)
+
+        # Process fills FIFO to determine pairing
+        # Arb is credited on the day the SECOND leg completes the pair
+        idx_a = 0
+        idx_b = 0
+        remaining_a = fills_a[0][2] if fills_a else 0
+        remaining_b = fills_b[0][2] if fills_b else 0
+
+        while idx_a < len(fills_a) and idx_b < len(fills_b):
+            key_a, price_a, _, _ = fills_a[idx_a]
+            key_b, price_b, _, _ = fills_b[idx_b]
+
+            # Pair as many as possible
+            pair_count = min(remaining_a, remaining_b)
+            arb_profit = (100 - price_a - price_b) * pair_count
+
+            # Credit arb to the LATER date (when pair completed)
+            arb_key = max(key_a, key_b)
+            periods[arb_key]["arb"] += arb_profit
+
+            remaining_a -= pair_count
+            remaining_b -= pair_count
+
+            if remaining_a == 0:
+                idx_a += 1
+                if idx_a < len(fills_a):
+                    remaining_a = fills_a[idx_a][2]
+
+            if remaining_b == 0:
+                idx_b += 1
+                if idx_b < len(fills_b):
+                    remaining_b = fills_b[idx_b][2]
+
+        # Process remaining fills as leftover (ev/av per fill date)
+        # First, rebuild remaining counts after pairing
+        paired_a = sum(f[2] for f in fills_a) - remaining_a - sum(fills_a[i][2] for i in range(idx_a + 1, len(fills_a))) if fills_a else 0
+        paired_b = sum(f[2] for f in fills_b) - remaining_b - sum(fills_b[i][2] for i in range(idx_b + 1, len(fills_b))) if fills_b else 0
+
+        # Process all fills for ev/av (leftover portion only)
+        def process_leftover(fills_list, theo, mid_price, is_a_side):
+            skip = paired_a if is_a_side else paired_b
+            for key, price, count, fee in fills_list:
+                # Add fees for this fill
+                periods[key]["fees"] += fee
+
+                # Determine leftover count for this fill
+                if skip >= count:
+                    skip -= count
+                    continue
+                leftover_count = count - skip
+                skip = 0
+
+                # EV = (theo - price) * leftover_count
+                ev = (theo - price) * leftover_count
+                periods[key]["ev"] += ev
+
+                # AV = actual or market value
+                if result_a is not None:
+                    # Settled
+                    if is_a_side:
+                        won = (result_a == "yes")
+                    else:
+                        won = (result_a == "no")
+                    payout = 100 * leftover_count if won else 0
+                    av = payout - price * leftover_count
+                elif mid_price:
+                    # Open with market value
+                    market_value = mid_price * leftover_count
+                    av = market_value - price * leftover_count
+                else:
+                    av = 0
+                periods[key]["av"] += av
+
+        process_leftover(fills_a, theo_a, mid_a, True)
+        process_leftover(fills_b, theo_b, mid_b, False)
+
+        # Add hedge P&L to the first fill's period
+        hedges = get_hedges_for_match(match_id)
+        if hedges and fills:
+            hedge_key = get_period_key(fills[0]["created_time"])
+            for h in hedges:
+                if h["outcome"] == "win":
+                    periods[hedge_key]["hedge"] += h["amount_usd"] * (h["odds"] - 1)
+                elif h["outcome"] == "loss":
+                    periods[hedge_key]["hedge"] -= h["amount_usd"]
+
+    # Convert to list
     result = []
     for key in sorted(periods.keys(), reverse=True):
         p = periods[key]
+        arb = p["arb"] / 100
+        ev = p["ev"] / 100
+        av = p["av"] / 100
+        delta = av - ev
+        hedge = p["hedge"]
+        fees = p["fees"] / 100
+        pnl = arb + av + hedge - fees
         result.append({
             "period": key,
-            "arb_profit": p["arb_profit"],
-            "leftover_ev": p["leftover_ev"],
-            "fees": p["fees"],
-            "hedge_pnl": p["hedge_pnl"],
-            "net_profit": p["arb_profit"] - p["fees"] + p["hedge_pnl"],
+            "arb": arb,
+            "ev": ev,
+            "av": av,
+            "delta": delta,
+            "hedge": hedge,
+            "fees": fees,
+            "pnl": pnl,
         })
 
     return result
+
+
+def get_open_positions() -> list[dict]:
+    """Get all unsettled matches with their EV."""
+    matches = get_all_matches()
+    result = []
+
+    for m in matches:
+        pnl_data = calculate_match_pnl(m["id"])
+        if "error" in pnl_data:
+            continue
+        if pnl_data.get("settled"):
+            continue  # Skip settled matches
+
+        leftover = pnl_data.get("leftover_a", 0) + pnl_data.get("leftover_b", 0)
+        if leftover == 0 and pnl_data.get("pairs", 0) == 0:
+            continue  # No position
+
+        result.append({
+            "match_id": m["id"],
+            "ticker_a": m["ticker_a"],
+            "ticker_b": m["ticker_b"],
+            "arb": pnl_data["arb"] / 100,
+            "ev": pnl_data["ev"] / 100,
+            "pairs": pnl_data["pairs"],
+            "leftover_a": pnl_data["leftover_a"],
+            "leftover_b": pnl_data["leftover_b"],
+            "fees": pnl_data["fees"] / 100,
+        })
+
+    return result
+
+
+def get_total_pnl(get_mid_price: callable = None) -> dict:
+    """Get total P&L across all matches (including open with market value)."""
+    matches = get_all_matches()
+
+    totals = {"arb": 0, "ev": 0, "av": 0, "hedge": 0.0, "fees": 0}
+
+    for m in matches:
+        pnl_data = calculate_match_pnl(m["id"], get_mid_price=get_mid_price)
+        if "error" in pnl_data:
+            continue
+
+        totals["arb"] += pnl_data["arb"]
+        totals["ev"] += pnl_data["ev"]
+        totals["av"] += pnl_data["av"]
+        totals["hedge"] += pnl_data["hedge"]
+        totals["fees"] += pnl_data["fees"]
+
+    arb = totals["arb"] / 100
+    ev = totals["ev"] / 100
+    av = totals["av"] / 100
+    delta = av - ev
+    hedge = totals["hedge"]
+    fees = totals["fees"] / 100
+    pnl = arb + av + hedge - fees
+
+    return {
+        "arb": arb,
+        "ev": ev,
+        "av": av,
+        "delta": delta,
+        "hedge": hedge,
+        "fees": fees,
+        "pnl": pnl,
+    }

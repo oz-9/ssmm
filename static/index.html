@@ -24,8 +24,8 @@
             justify-content: space-between;
             align-items: center;
             gap: 20px;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
+            margin-bottom: 8px;
+            padding-bottom: 10px;
             border-bottom: 1px solid #2d2d44;
         }
         .balance { color: #9d4edd; font-size: 16px; }
@@ -35,7 +35,7 @@
             border: 1px solid #2d2d44;
             border-radius: 6px;
             padding: 15px;
-            margin-bottom: 20px;
+            margin-bottom: 8px;
         }
         .controls h3 { margin-bottom: 10px; color: #888; }
         .form-row {
@@ -45,7 +45,7 @@
             align-items: flex-end;
         }
         .form-group { display: flex; flex-direction: column; gap: 4px; }
-        .form-group label { color: #888; font-size: 11px; }
+        .form-group label { color: #888; font-size: 11px; padding-left: 4px; }
         .form-group input {
             background: #000000;
             border: 1px solid #2d2d44;
@@ -124,16 +124,18 @@
         .matches {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 8px;
         }
         .match {
             background: #0a0a0f;
-            border: 1px solid #2d2d44;
+            border: 2px solid #2d2d44;
             border-radius: 4px;
             padding: 8px 10px;
             font-size: 12px;
+            transition: border-color 6s ease;
         }
-        .match.active { border-color: #9d4edd; }
+        .match.active { border-color: #3d3d5c; }
+        .match.new-fill { border-color: #9d4edd; transition: border-color 0s; }
         .match-header {
             display: flex;
             justify-content: space-between;
@@ -179,19 +181,18 @@
             padding-bottom: 3px;
             border-bottom: 1px solid #2d2d44;
         }
-        .orderbook-label { color: #9d4edd; font-weight: bold; font-size: 11px; }
+        .orderbook-label { color: #e0e0e0; font-weight: bold; font-size: 11px; }
         .orderbook-spread { color: #888; font-weight: normal; }
         .orderbook-theo { color: #888; font-size: 10px; }
 
         .orderbook-row {
             display: flex;
-            justify-content: space-between;
             font-size: 11px;
             margin-bottom: 2px;
         }
         .orderbook-side { color: #888; width: 24px; }
-        .orderbook-best { color: #e0e0e0; }
-        .orderbook-our { font-weight: bold; }
+        .orderbook-best { color: #e0e0e0; width: 45px; }
+        .orderbook-our { flex: 1; text-align: right; font-weight: bold; }
         .orderbook-our.active { color: #9d4edd; }
         .orderbook-our.rebal { color: #f59e0b; }
         .orderbook-our.inactive { color: #dc3545; font-style: italic; font-weight: normal; }
@@ -204,8 +205,10 @@
             border-top: 1px solid #2d2d44;
             font-size: 11px;
         }
+        .inventory-row { display: flex; align-items: center; font-size: 10px; }
         .inventory { color: #888; }
         .inventory.overexposed { color: #dc3545; }
+        .pairs-info { color: #666; }
 
         .match-settings {
             display: flex;
@@ -260,7 +263,7 @@
             font-size: 13px;
         }
         .fill:last-child { border-bottom: none; }
-        .fill-time { color: #888; }
+        .fill-time { color: #9d4edd; }
         .fill-details { color: #e0e0e0; }
         .fill.complete { color: #9d4edd; }
 
@@ -268,16 +271,19 @@
         .dashboard-item {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            line-height: 1;
         }
         .dashboard-item label {
             color: #666;
             font-size: 12px;
+            line-height: 1;
         }
         .dashboard-item .value {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             color: #e0e0e0;
+            line-height: 1;
         }
         .dashboard-item .value.cash { color: #9d4edd; }
         .status-dot {
@@ -411,12 +417,16 @@
             border-radius: 6px;
             padding: 15px;
             margin-bottom: 20px;
+            transition: border-color 5s ease;
         }
-        .fills.has-fills { border-color: #9d4edd; }
+        .fills.new-fill { border-color: #9d4edd; transition: border-color 0s; }
         .fills h3 { margin-bottom: 10px; color: #9d4edd; font-size: 16px; }
         .fill-list {
-            max-height: 150px;
+            min-height: 50px;
+            max-height: 400px;
+            height: 100px;
             overflow-y: auto;
+            resize: vertical;
         }
         .fill {
             padding: 8px 10px;
@@ -433,7 +443,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .fill:last-child { margin-bottom: 0; }
-        .fill-time { color: #888; }
+        .fill-time { color: #9d4edd; }
         .fill-details { color: #e0e0e0; flex: 1; }
         .fill.complete { background: #1a2d1a; border-left: 3px solid #22c55e; }
         .fill-profit { color: #22c55e; font-weight: bold; }
@@ -491,6 +501,22 @@
         }
         .setting-inline input:focus { outline: none; border-color: #9d4edd; }
         .setting-inline span { color: #666; }
+
+        /* Side-by-side fills and pnl */
+        .fills-pnl-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .fills-pnl-row .fills {
+            flex: 1;
+            margin-bottom: 0;
+            margin-top: 0;
+        }
+        .fills-pnl-row .fill-list {
+            height: 250px;
+            max-height: 400px;
+        }
     </style>
 </head>
 <body>
@@ -525,50 +551,35 @@
             </div>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
-            <button class="primary" onclick="startAll()" style="padding: 6px 8px;">start all</button>
+            <button onclick="startAll()" style="padding: 6px 8px;">start all</button>
             <button class="stop" onclick="cancelAll()" style="padding: 6px 8px;">stop all</button>
             <button class="secondary" onclick="removeAll()" style="padding: 6px 8px;">remove all</button>
         </div>
     </div>
 
-    <div class="fills" id="fills-container">
-        <h3>recent fills <button id="toggle-fills" onclick="toggleFills()" style="display:none; margin-left: 10px; padding: 2px 8px; font-size: 12px; cursor: pointer;">see more</button></h3>
-        <div class="fill-list" id="fills">
-            <div class="no-fills">no fills yet</div>
+    <div class="fills-pnl-row">
+        <div class="fills" id="fills-container">
+            <h3 style="display: flex; align-items: center;">fills <button id="toggle-fills" onclick="toggleFills()" style="display:none; margin-left: 10px; padding: 4px 8px; font-size: 11px;">see more</button></h3>
+            <div class="fill-list" id="fills">
+                <div class="no-fills">no fills yet</div>
+            </div>
         </div>
-    </div>
 
-    <div class="fills" id="pnl-summary-container">
-        <h3>P&L Summary
-            <select id="pnl-period" onchange="loadPnlSummary()" style="margin-left: 10px; background: #000; border: 1px solid #2d2d44; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-            </select>
-        </h3>
-        <div id="pnl-summary-table" style="margin-top: 10px;">
-            <div class="no-fills">Loading...</div>
-        </div>
-    </div>
-
-    <div class="market-picker">
-        <h3>find markets</h3>
-        <select id="market-type" onchange="onMarketTypeChange()">
-            <option value="">select market type...</option>
-            <option value="lacrosse">Men's Lacrosse</option>
-            <option value="boxing">Boxing</option>
-        </select>
-        <button onclick="refreshMarkets()" class="secondary">refresh</button>
-        <div class="market-list" id="market-list">
-            <!-- Markets will be rendered here -->
-        </div>
-        <div class="market-list-actions" id="market-list-actions" style="display: none;">
-            <button onclick="showAddAllModal()">add all markets</button>
+        <div class="fills" id="pnl-summary-container">
+            <h3>pnl
+                <select id="pnl-period" onchange="loadPnlSummary()" style="margin-left: 10px; background: #000; border: 1px solid #2d2d44; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                    <option value="daily">daily</option>
+                    <option value="weekly">weekly</option>
+                    <option value="monthly">monthly</option>
+                </select>
+            </h3>
+            <div id="pnl-summary-table" style="margin-top: 10px;">
+                <div class="no-fills">loading...</div>
+            </div>
         </div>
     </div>
 
     <div class="controls">
-        <h3>add match</h3>
         <div class="form-row">
             <div class="form-group">
                 <label>ticker a</label>
@@ -588,17 +599,31 @@
             </div>
             <div class="form-group">
                 <label>edge</label>
-                <input type="number" id="edge" class="short" step="0.1" value="2.5">
+                <input type="number" id="edge" class="short" step="0.1" value="1.5">
             </div>
             <div class="form-group">
                 <label>contracts</label>
-                <input type="number" id="contracts" class="short" value="5">
+                <input type="number" id="contracts" class="short" value="10">
             </div>
             <div class="form-group">
                 <label>inv max</label>
-                <input type="number" id="inventory_max" class="short" value="15">
+                <input type="number" id="inventory_max" class="short" value="20">
             </div>
             <button onclick="addMatch(this)">add</button>
+        </div>
+        <div style="margin-top: 12px;">
+            <select id="market-type" onchange="onMarketTypeChange()" style="background: #000; border: 1px solid #2d2d44; color: #e0e0e0; padding: 8px 10px; border-radius: 4px; font-family: inherit; font-size: 13px;">
+                <option value="">find markets...</option>
+                <option value="lacrosse">men's lacrosse</option>
+                <option value="boxing">boxing</option>
+            </select>
+            <button onclick="refreshMarkets()" class="secondary">refresh</button>
+            <div class="market-list" id="market-list">
+                <!-- Markets will be rendered here -->
+            </div>
+            <div class="market-list-actions" id="market-list-actions" style="display: none;">
+                <button onclick="showAddAllModal()">add all markets</button>
+            </div>
         </div>
     </div>
 
@@ -624,7 +649,7 @@
             </div>
             <div class="modal-row">
                 <label>markets</label>
-                <span id="modal-market-count">0</span>
+                <span id="modal-market-count" style="width: 80px; text-align: center;">0</span>
             </div>
             <div class="modal-actions">
                 <button class="secondary" onclick="hideAddAllModal()">cancel</button>
@@ -651,6 +676,34 @@
 
         function escapeHtml(str) {
             return str.replace(/'/g, "\\'");
+        }
+
+        function pad2(n) {
+            return String(n).padStart(2, '0');
+        }
+
+        function formatEventTime(isoTime) {
+            if (!isoTime) return '';
+            const d = new Date(isoTime);
+            const now = new Date();
+            const h = d.getHours();
+            const m = d.getMinutes();
+            const ampm = h >= 12 ? 'p' : 'a';
+            const h12 = h % 12 || 12;
+            const timeStr = `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+
+            // Check if today
+            if (d.toDateString() === now.toDateString()) {
+                return timeStr;
+            }
+            // Check if tomorrow
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            if (d.toDateString() === tomorrow.toDateString()) {
+                return `tmrw ${timeStr}`;
+            }
+            // Otherwise show date
+            return `${d.getMonth()+1}/${d.getDate()} ${timeStr}`;
         }
 
         function toggleApiDropdown() {
@@ -695,9 +748,9 @@
             if (!isActive) {
                 return `<span class="orderbook-our inactive">stopped</span>`;
             } else if (order.price && order.reason && order.reason.includes('rebal')) {
-                return `<span class="orderbook-our rebal">bid ${order.price}c (-ev rebal)</span>`;
+                return `<span class="orderbook-our rebal">bid ${order.price}c, hedge</span>`;
             } else if (order.price && order.reason === 'at ceiling') {
-                return `<span class="orderbook-our active">bid ${order.price}c (ceiling)</span>`;
+                return `<span class="orderbook-our active">bid ${order.price}c (max)</span>`;
             } else if (order.price) {
                 return `<span class="orderbook-our active">bid ${order.price}c</span>`;
             } else if (order.reason) {
@@ -718,12 +771,20 @@
                 settingsInitialized = true;
             }
 
-            // Group matches by category
+            // Group matches by category and sort by event time
             const categorized = {};
             state.matches.forEach(m => {
                 const cat = m.category || 'Other';
                 if (!categorized[cat]) categorized[cat] = [];
                 categorized[cat].push(m);
+            });
+            // Sort each category by event_time (earliest first)
+            Object.values(categorized).forEach(arr => {
+                arr.sort((a, b) => {
+                    if (!a.event_time) return 1;
+                    if (!b.event_time) return -1;
+                    return new Date(a.event_time) - new Date(b.event_time);
+                });
             });
 
             // Render matches grouped by category
@@ -744,11 +805,12 @@
                     </div>
                     <div class="category-matches ${collapsedCategories[category] ? 'collapsed' : ''}">
                         ${catMatches.map(m => `
-                            <div class="match ${m.active ? 'active' : ''}">
+                            <div class="match ${m.active ? 'active' : ''}" data-match-id="${m.id}">
                                 <div class="match-header">
                                     <div class="match-title">
                                         <div class="status-dot ${m.active ? 'active' : ''}"></div>
-                                        <a class="match-name" href="${m.market_url || '#'}" target="_blank" ${m.market_url ? '' : 'onclick="return false;"'}>${m.name}</a>
+                                        <a class="match-name" href="${m.market_url || '#'}" target="_blank" ${m.market_url ? '' : 'onclick="return false;"'}>${m.name.replace(/ Winner\?/g, '')}</a>
+                                        ${m.event_time ? `<span style="color: #666; font-size: 10px; margin-left: 6px;">${formatEventTime(m.event_time)}</span>` : ''}
                                         ${m.missed_trade_time ? `<span class="missed-trade" title="${m.missed_trade_desc}">❌ ${m.missed_trade_time}</span>` : ''}
                                     </div>
                                     <div class="match-actions">
@@ -763,40 +825,40 @@
                                 <div class="orderbooks">
                                     <div class="orderbook">
                                         <div class="orderbook-header">
-                                            <span class="orderbook-label">${m.market_a.label} <span class="orderbook-spread">${m.market_a.best_bid}@${m.market_a.best_ask}</span></span>
+                                            <span class="orderbook-label">${m.market_a.label} <span class="orderbook-spread">${pad2(m.market_a.best_bid)}@${pad2(m.market_a.best_ask)}</span></span>
                                             <span class="orderbook-theo">theo ${m.market_a.theo.toFixed(1)}c</span>
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">yes</span>
-                                            <span class="orderbook-best">${m.market_a.second_bid || 0}-${m.market_a.best_bid}</span>
+                                            <span class="orderbook-best">${pad2(m.market_a.second_bid || 0)}-${pad2(m.market_a.best_bid)}</span>
                                             ${renderOrder(m.orders.a_yes, m.active)}
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">no</span>
-                                            <span class="orderbook-best">${100 - (m.market_a.second_ask || 100)}-${100 - m.market_a.best_ask}</span>
+                                            <span class="orderbook-best">${pad2(100 - (m.market_a.second_ask || 100))}-${pad2(100 - m.market_a.best_ask)}</span>
                                             ${renderOrder(m.orders.a_no, m.active)}
                                         </div>
                                     </div>
                                     <div class="orderbook">
                                         <div class="orderbook-header">
-                                            <span class="orderbook-label">${m.market_b.label} <span class="orderbook-spread">${m.market_b.best_bid}@${m.market_b.best_ask}</span></span>
+                                            <span class="orderbook-label">${m.market_b.label} <span class="orderbook-spread">${pad2(m.market_b.best_bid)}@${pad2(m.market_b.best_ask)}</span></span>
                                             <span class="orderbook-theo">theo ${m.market_b.theo.toFixed(1)}c</span>
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">yes</span>
-                                            <span class="orderbook-best">${m.market_b.second_bid || 0}-${m.market_b.best_bid}</span>
+                                            <span class="orderbook-best">${pad2(m.market_b.second_bid || 0)}-${pad2(m.market_b.best_bid)}</span>
                                             ${renderOrder(m.orders.b_yes, m.active)}
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">no</span>
-                                            <span class="orderbook-best">${100 - (m.market_b.second_ask || 100)}-${100 - m.market_b.best_ask}</span>
+                                            <span class="orderbook-best">${pad2(100 - (m.market_b.second_ask || 100))}-${pad2(100 - m.market_b.best_ask)}</span>
                                             ${renderOrder(m.orders.b_no, m.active)}
                                         </div>
                                     </div>
                                 </div>
                                 <div class="match-footer">
-                                    <span class="inventory ${Math.abs(m.inventory) >= m.inventory_max ? 'overexposed' : ''}">
-                                        ${m.inventory === 0 ? 'neutral' : m.inventory > 0 ? `long ${m.market_a.label} (${m.inventory})` : `long ${m.market_b.label} (${Math.abs(m.inventory)})`}
+                                    <span class="inventory-row">
+                                        <span class="inventory ${Math.abs(m.inventory) >= m.inventory_max ? 'overexposed' : ''}">${m.inventory === 0 ? 'neutral' : m.inventory > 0 ? `long ${m.market_a.label} (${m.inventory})` : `long ${m.market_b.label} (${Math.abs(m.inventory)})`}</span>${m.pnl && m.pnl.pairs > 0 ? `<span class="pairs-info" style="margin-left: 6px;">| ${m.pnl.pairs} pairs, $${(m.pnl.arb / 100).toFixed(2)}</span>` : ''}
                                     </span>
                                     <div class="match-settings">
                                         <div class="setting-group">
@@ -818,20 +880,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                ${m.pnl && (m.pnl.arb_profit !== 0 || m.pnl.leftover_a > 0 || m.pnl.leftover_b > 0) ? `
-                                <div class="pnl-section" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #2d2d44; font-size: 11px;">
-                                    <div style="display: flex; justify-content: space-between; color: #888;">
-                                        <span>Arb: <span style="color: ${m.pnl.arb_profit >= 0 ? '#22c55e' : '#dc3545'}">$${(m.pnl.arb_profit / 100).toFixed(2)}</span></span>
-                                        <span>Fees: <span style="color: #dc3545">-$${(m.pnl.fees / 100).toFixed(2)}</span></span>
-                                        <span>Net: <span style="color: ${(m.pnl.arb_profit - m.pnl.fees) >= 0 ? '#22c55e' : '#dc3545'}">$${((m.pnl.arb_profit - m.pnl.fees) / 100).toFixed(2)}</span></span>
-                                    </div>
-                                    ${m.pnl.leftover_a > 0 || m.pnl.leftover_b > 0 ? `
-                                    <div style="color: #888; margin-top: 4px;">
-                                        Leftover: ${m.pnl.leftover_a} ${m.market_a.label} / ${m.pnl.leftover_b} ${m.market_b.label} (EV: $${(m.pnl.leftover_ev / 100).toFixed(2)})
-                                    </div>
-                                    ` : ''}
-                                </div>
-                                ` : ''}
                             </div>
                         `).join('')}
                     </div>
@@ -845,19 +893,17 @@
             const currentFillsJson = JSON.stringify(state.fills);
 
             if (state.fills.length > 0) {
-                fillsContainer.classList.add('has-fills');
-
-                // Show/hide toggle button
-                if (state.fills.length > 3) {
+                // Show toggle button if many fills
+                if (state.fills.length > 10) {
                     toggleBtn.style.display = 'inline';
-                    toggleBtn.textContent = showAllFills ? 'see less' : `see more (${state.fills.length})`;
+                    toggleBtn.textContent = showAllFills ? 'show less' : `show all (${state.fills.length})`;
                 } else {
                     toggleBtn.style.display = 'none';
                 }
 
                 // Only re-render if fills changed
                 if (currentFillsJson !== lastFillsJson) {
-                    const displayFills = showAllFills ? state.fills : state.fills.slice(-3);
+                    const displayFills = showAllFills ? state.fills : state.fills.slice(-10);
                     fillsEl.innerHTML = displayFills.slice().reverse().map(f => `
                         <div class="fill ${f.complete_set ? 'complete' : ''}">
                             <span class="fill-time">${f.timestamp}</span>
@@ -870,14 +916,18 @@
                     lastFillsJson = currentFillsJson;
                 }
 
-                // Show notification for new fills
+                // Flash purple border on new fills, then fade back
                 if (state.fills.length > previousFillCount && previousFillCount > 0) {
                     const newFill = state.fills[state.fills.length - 1];
                     showFillNotification(newFill);
+                    // Add purple border instantly, then remove to trigger fade
+                    fillsContainer.classList.add('new-fill');
+                    setTimeout(() => fillsContainer.classList.remove('new-fill'), 100);
+                    // Also highlight the match card
+                    highlightMatch(newFill.match_id);
                 }
                 previousFillCount = state.fills.length;
             } else {
-                fillsContainer.classList.remove('has-fills');
                 toggleBtn.style.display = 'none';
                 fillsEl.innerHTML = '<div class="no-fills">no fills yet</div>';
             }
@@ -887,6 +937,15 @@
             showAllFills = !showAllFills;
             lastFillsJson = '';  // Force re-render
             render();
+        }
+
+        function highlightMatch(matchId) {
+            // Find match element by data attribute
+            const matchEl = document.querySelector(`[data-match-id="${matchId}"]`);
+            if (matchEl) {
+                matchEl.classList.add('new-fill');
+                setTimeout(() => matchEl.classList.remove('new-fill'), 100);
+            }
         }
 
         function showFillNotification(fill) {
@@ -1231,7 +1290,7 @@
             await fetch('/api/matches/start-all', { method: 'POST' });
         }
 
-        // P&L Summary functions
+        // p&l summary functions
         async function loadPnlSummary() {
             const period = document.getElementById('pnl-period').value;
             const tableEl = document.getElementById('pnl-summary-table');
@@ -1241,7 +1300,7 @@
                 const data = await resp.json();
 
                 if (!data.summary || data.summary.length === 0) {
-                    tableEl.innerHTML = '<div class="no-fills">No P&L data yet.</div>';
+                    tableEl.innerHTML = '<div class="no-fills">no p&l data yet.</div>';
                     return;
                 }
 
@@ -1249,33 +1308,62 @@
                     <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
                         <thead>
                             <tr style="color: #888; text-align: left;">
-                                <th style="padding: 6px;">Period</th>
-                                <th style="padding: 6px;">Arb</th>
-                                <th style="padding: 6px;">Fees</th>
-                                <th style="padding: 6px;">Hedge</th>
-                                <th style="padding: 6px;">Net</th>
+                                <th style="padding: 6px;">period</th>
+                                <th style="padding: 6px;">arb</th>
+                                <th style="padding: 6px;">ev</th>
+                                <th style="padding: 6px;">av</th>
+                                <th style="padding: 6px;">delta</th>
+                                <th style="padding: 6px;">hedge</th>
+                                <th style="padding: 6px;">fees</th>
+                                <th style="padding: 6px;">pnl</th>
                             </tr>
                         </thead>
                         <tbody>
                 `;
 
+                let totals = {arb: 0, ev: 0, av: 0, delta: 0, hedge: 0, fees: 0, pnl: 0};
                 for (const row of data.summary) {
-                    const netColor = row.net_profit >= 0 ? '#22c55e' : '#dc3545';
+                    totals.arb += row.arb;
+                    totals.ev += row.ev;
+                    totals.av += row.av;
+                    totals.delta += row.delta;
+                    totals.hedge += row.hedge;
+                    totals.fees += row.fees;
+                    totals.pnl += row.pnl;
+                    const c = (v) => v >= 0 ? '#22c55e' : '#dc3545';
                     html += `
                         <tr style="border-top: 1px solid #2d2d44;">
                             <td style="padding: 6px;">${row.period}</td>
-                            <td style="padding: 6px; color: ${row.arb_profit >= 0 ? '#22c55e' : '#dc3545'}">$${(row.arb_profit / 100).toFixed(2)}</td>
-                            <td style="padding: 6px; color: #dc3545">-$${(row.fees / 100).toFixed(2)}</td>
-                            <td style="padding: 6px; color: ${row.hedge_pnl >= 0 ? '#22c55e' : '#dc3545'}">$${row.hedge_pnl.toFixed(2)}</td>
-                            <td style="padding: 6px; color: ${netColor}">$${(row.net_profit / 100).toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${c(row.arb)}">$${row.arb.toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${c(row.ev)}">$${row.ev.toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${c(row.av)}">$${row.av.toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${c(row.delta)}">$${row.delta.toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${c(row.hedge)}">$${row.hedge.toFixed(2)}</td>
+                            <td style="padding: 6px; color: #dc3545">-$${row.fees.toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${c(row.pnl)}">$${row.pnl.toFixed(2)}</td>
                         </tr>
                     `;
                 }
 
+                // Add totals row
+                const c = (v) => v >= 0 ? '#22c55e' : '#dc3545';
+                html += `
+                    <tr style="border-top: 1px solid #2d2d44; font-weight: bold;">
+                        <td style="padding: 6px;">total</td>
+                        <td style="padding: 6px; color: ${c(totals.arb)}">$${totals.arb.toFixed(2)}</td>
+                        <td style="padding: 6px; color: ${c(totals.ev)}">$${totals.ev.toFixed(2)}</td>
+                        <td style="padding: 6px; color: ${c(totals.av)}">$${totals.av.toFixed(2)}</td>
+                        <td style="padding: 6px; color: ${c(totals.delta)}">$${totals.delta.toFixed(2)}</td>
+                        <td style="padding: 6px; color: ${c(totals.hedge)}">$${totals.hedge.toFixed(2)}</td>
+                        <td style="padding: 6px; color: #dc3545">-$${totals.fees.toFixed(2)}</td>
+                        <td style="padding: 6px; color: ${c(totals.pnl)}">$${totals.pnl.toFixed(2)}</td>
+                    </tr>
+                `;
+
                 html += '</tbody></table>';
                 tableEl.innerHTML = html;
             } catch (e) {
-                tableEl.innerHTML = '<div class="no-fills">Error loading P&L data.</div>';
+                tableEl.innerHTML = '<div class="no-fills">error loading p&l data.</div>';
             }
         }
 
