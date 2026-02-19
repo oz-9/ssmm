@@ -1025,14 +1025,14 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_a["best_bid_qty"], our_size=contracts,
             )
         if a_yes_price == -1:
-            a_yes_reason = f"bad top bid ({book_a['best_bid']})"
+            a_yes_reason = f"overpriced ({book_a['best_bid']})"
         elif a_yes_price == ceiling_a:
             a_yes_reason = "at ceiling"
         else:
             a_yes_reason = None
     else:
         a_yes_price = -2
-        a_yes_reason = f"overexposed to {label_a}"
+        a_yes_reason = "overexposed"
 
     # B YES (goes long B)
     b_yes_key = f"{match.id}:{match.market_b.ticker}:yes"
@@ -1056,14 +1056,14 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_b["best_bid_qty"], our_size=contracts,
             )
         if b_yes_price == -1:
-            b_yes_reason = f"bad top bid ({book_b['best_bid']})"
+            b_yes_reason = f"overpriced ({book_b['best_bid']})"
         elif b_yes_price == ceiling_b:
             b_yes_reason = "at ceiling"
         else:
             b_yes_reason = None
     else:
         b_yes_price = -2
-        b_yes_reason = f"overexposed to {label_b}"
+        b_yes_reason = "overexposed"
 
     # A NO (goes long B)
     a_no_key = f"{match.id}:{match.market_a.ticker}:no"
@@ -1086,14 +1086,14 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_a["best_no_bid_qty"], our_size=contracts,
             )
         if a_no_price == -1:
-            a_no_reason = f"bad top bid ({book_a['best_no_bid']})"
+            a_no_reason = f"overpriced ({book_a['best_no_bid']})"
         elif a_no_price == ceiling_b:
             a_no_reason = "at ceiling"
         else:
             a_no_reason = None
     else:
         a_no_price = -2
-        a_no_reason = f"overexposed to {label_b}"
+        a_no_reason = "overexposed"
 
     # B NO (goes long A)
     b_no_key = f"{match.id}:{match.market_b.ticker}:no"
@@ -1116,14 +1116,14 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_b["best_no_bid_qty"], our_size=contracts,
             )
         if b_no_price == -1:
-            b_no_reason = f"bad top bid ({book_b['best_no_bid']})"
+            b_no_reason = f"overpriced ({book_b['best_no_bid']})"
         elif b_no_price == ceiling_a:
             b_no_reason = "at ceiling"
         else:
             b_no_reason = None
     else:
         b_no_price = -2
-        b_no_reason = f"overexposed to {label_a}"
+        b_no_reason = "overexposed"
 
     # Place/update orders in parallel
     await asyncio.gather(
