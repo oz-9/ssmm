@@ -743,6 +743,7 @@
                                             : `<button onclick="startMatch('${m.id}', this)">start</button>`
                                         }
                                         <button class="secondary" onclick="refreshOdds('${m.id}', this)" title="Refresh odds from Odds API">↻</button>
+                                        <button class="secondary" onclick="openHedgeModal('${m.id}')" title="Add hedge bet" style="background: #6366f1;">+H</button>
                                         <button class="secondary" onclick="removeMatch('${m.id}', this)">remove</button>
                                     </div>
                                 </div>
@@ -1210,8 +1211,72 @@
             await fetch('/api/matches/start-all', { method: 'POST' });
         }
 
+        // Hedge modal functions
+        function openHedgeModal(matchId) {
+            document.getElementById('hedge-match-id').value = matchId;
+            document.getElementById('hedge-modal').classList.add('visible');
+        }
+
+        function closeHedgeModal() {
+            document.getElementById('hedge-modal').classList.remove('visible');
+            document.getElementById('hedge-amount').value = '';
+            document.getElementById('hedge-odds').value = '';
+        }
+
+        async function submitHedge() {
+            const data = {
+                match_id: document.getElementById('hedge-match-id').value,
+                platform: document.getElementById('hedge-platform').value,
+                side: document.getElementById('hedge-side').value,
+                amount_usd: parseFloat(document.getElementById('hedge-amount').value),
+                odds: parseFloat(document.getElementById('hedge-odds').value),
+            };
+            await fetch('/api/hedges', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            closeHedgeModal();
+        }
+
         // Initial connection
         connect();
     </script>
+
+    <!-- Hedge Modal -->
+    <div class="modal-overlay" id="hedge-modal">
+        <div class="modal">
+            <h3>Add Hedge</h3>
+            <input type="hidden" id="hedge-match-id">
+            <div class="modal-row">
+                <label>Platform</label>
+                <select id="hedge-platform" style="background: #000; border: 1px solid #2d2d44; color: #e0e0e0; padding: 8px 10px; border-radius: 4px; font-family: inherit;">
+                    <option value="thunderpick">Thunderpick</option>
+                    <option value="ggbet">GGBet</option>
+                    <option value="pinnacle">Pinnacle</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="modal-row">
+                <label>Side</label>
+                <select id="hedge-side" style="background: #000; border: 1px solid #2d2d44; color: #e0e0e0; padding: 8px 10px; border-radius: 4px; font-family: inherit;">
+                    <option value="team_a">Team A</option>
+                    <option value="team_b">Team B</option>
+                </select>
+            </div>
+            <div class="modal-row">
+                <label>Amount (USD)</label>
+                <input type="number" id="hedge-amount" step="0.01" min="0" placeholder="10.00">
+            </div>
+            <div class="modal-row">
+                <label>Odds (decimal)</label>
+                <input type="number" id="hedge-odds" step="0.01" min="1" placeholder="1.85">
+            </div>
+            <div class="modal-actions">
+                <button class="secondary" onclick="closeHedgeModal()">Cancel</button>
+                <button onclick="submitHedge()">Add Hedge</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
