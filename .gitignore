@@ -16,3 +16,8 @@ nul
 
 # Config with secrets (if applicable)
 config/config.py
+
+# SQLite database
+pnl.db
+pnl.db-wal
+pnl.db-shm
