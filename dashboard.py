@@ -336,6 +336,77 @@ def calculate_match_inventory(match: "Match") -> int:
 
     return long_a - long_b
 
+
+def sync_match_cost_from_fills(match: "Match"):
+    """Sync cost tracking data from Kalshi fills for a match."""
+    if not client:
+        return
+
+    try:
+        # Fetch fills for both tickers
+        ticker_a = match.market_a.ticker
+        ticker_b = match.market_b.ticker
+
+        resp = client.get(f"/portfolio/fills?ticker={ticker_a}&limit=100")
+        fills_a = resp.json().get("fills", [])
+
+        resp = client.get(f"/portfolio/fills?ticker={ticker_b}&limit=100")
+        fills_b = resp.json().get("fills", [])
+
+        cost_long_a = 0
+        count_long_a = 0
+        cost_long_b = 0
+        count_long_b = 0
+
+        # Process fills for ticker A
+        for f in fills_a:
+            side = f.get("side")  # "yes" or "no"
+            action = f.get("action")  # "buy" or "sell"
+            count = f.get("count", 0)
+            price = f.get("yes_price") if side == "yes" else (100 - f.get("yes_price", 0))
+
+            # Only count buys (sells would reduce position)
+            if action == "buy":
+                if side == "yes":
+                    # A YES = long A
+                    cost_long_a += count * price
+                    count_long_a += count
+                else:
+                    # A NO = long B
+                    cost_long_b += count * price
+                    count_long_b += count
+
+        # Process fills for ticker B
+        for f in fills_b:
+            side = f.get("side")
+            action = f.get("action")
+            count = f.get("count", 0)
+            price = f.get("yes_price") if side == "yes" else (100 - f.get("yes_price", 0))
+
+            if action == "buy":
+                if side == "yes":
+                    # B YES = long B
+                    cost_long_b += count * price
+                    count_long_b += count
+                else:
+                    # B NO = long A
+                    cost_long_a += count * price
+                    count_long_a += count
+
+        match.cost_long_a = cost_long_a
+        match.count_long_a = count_long_a
+        match.cost_long_b = cost_long_b
+        match.count_long_b = count_long_b
+
+        if count_long_a > 0 or count_long_b > 0:
+            avg_a = cost_long_a / count_long_a if count_long_a > 0 else 0
+            avg_b = cost_long_b / count_long_b if count_long_b > 0 else 0
+            print(f"[{match.id}] Synced costs: A={count_long_a}@{avg_a:.1f}c, B={count_long_b}@{avg_b:.1f}c")
+
+    except Exception as e:
+        print(f"[{match.id}] Failed to sync costs: {e}")
+
+
 # =============================================================================
 # MARKET LOGIC
 # =============================================================================
@@ -436,8 +507,9 @@ def add_match(config: MatchConfig) -> Match:
         market_url=market_url,
     )
 
-    # Fetch current positions from Kalshi
+    # Fetch current positions and cost data from Kalshi
     match.inventory = calculate_match_inventory(match)
+    sync_match_cost_from_fills(match)
 
     matches[match_id] = match
 
@@ -1575,11 +1647,12 @@ async def api_delete_hedge(hedge_id: int):
 
 @app.post("/api/sync-inventory")
 async def api_sync_inventory():
-    """Sync inventory for all matches from Kalshi positions."""
+    """Sync inventory and cost data for all matches from Kalshi."""
     updated = []
     for match in matches.values():
         old_inv = match.inventory
         match.inventory = await asyncio.to_thread(calculate_match_inventory, match)
+        await asyncio.to_thread(sync_match_cost_from_fills, match)
         if match.inventory != old_inv:
             updated.append({"id": match.id, "old": old_inv, "new": match.inventory})
             print(f"[{match.id}] Inventory synced: {old_inv} -> {match.inventory}")
