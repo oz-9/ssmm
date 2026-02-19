@@ -156,21 +156,62 @@ def match_events(kalshi_events: dict, odds_events: list) -> list[BoxingMatch]:
             away_match = any(p in title_lower for p in away_parts)
 
             if home_match and away_match:
-                # Get best odds for each outcome
-                best_home = best_away = 0
-                best_draw = 0
+                # Collect odds - Pinnacle 60%, average of others 40%
+                pinnacle_home = pinnacle_away = pinnacle_draw = None
+                other_home = []
+                other_away = []
+                other_draw = []
                 bookmakers = []
 
                 for bm in odds_event.get("bookmakers", []):
+                    bm_key = bm["key"]
+                    home_price = away_price = draw_price = None
                     for outcome in bm["markets"][0]["outcomes"]:
-                        if outcome["name"] == home and outcome["price"] > best_home:
-                            best_home = outcome["price"]
-                        elif outcome["name"] == away and outcome["price"] > best_away:
-                            best_away = outcome["price"]
-                        elif outcome["name"].lower() == "draw" and outcome["price"] > best_draw:
-                            best_draw = outcome["price"]
-                    if bm["key"] not in bookmakers:
-                        bookmakers.append(bm["key"])
+                        if outcome["name"] == home:
+                            home_price = outcome["price"]
+                        elif outcome["name"] == away:
+                            away_price = outcome["price"]
+                        elif outcome["name"].lower() == "draw":
+                            draw_price = outcome["price"]
+
+                    if home_price and away_price:
+                        if bm_key not in bookmakers:
+                            bookmakers.append(bm_key)
+                        if bm_key == "pinnacle":
+                            pinnacle_home = home_price
+                            pinnacle_away = away_price
+                            pinnacle_draw = draw_price
+                        else:
+                            other_home.append(home_price)
+                            other_away.append(away_price)
+                            if draw_price:
+                                other_draw.append(draw_price)
+
+                # Calculate: 60% Pinnacle, 40% average of others
+                if pinnacle_home and other_home:
+                    avg_other_home = sum(other_home) / len(other_home)
+                    avg_other_away = sum(other_away) / len(other_away)
+                    best_home = 0.6 * pinnacle_home + 0.4 * avg_other_home
+                    best_away = 0.6 * pinnacle_away + 0.4 * avg_other_away
+                    if pinnacle_draw and other_draw:
+                        avg_other_draw = sum(other_draw) / len(other_draw)
+                        best_draw = 0.6 * pinnacle_draw + 0.4 * avg_other_draw
+                    elif pinnacle_draw:
+                        best_draw = pinnacle_draw
+                    elif other_draw:
+                        best_draw = sum(other_draw) / len(other_draw)
+                    else:
+                        best_draw = 0
+                elif pinnacle_home:
+                    best_home = pinnacle_home
+                    best_away = pinnacle_away
+                    best_draw = pinnacle_draw if pinnacle_draw else 0
+                elif other_home:
+                    best_home = sum(other_home) / len(other_home)
+                    best_away = sum(other_away) / len(other_away)
+                    best_draw = sum(other_draw) / len(other_draw) if other_draw else 0
+                else:
+                    best_home = best_away = best_draw = 0
 
                 if best_home > 0 and best_away > 0:
                     # Figure out which ticker is which fighter

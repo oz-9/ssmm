@@ -50,7 +50,7 @@
             background: #000000;
             border: 1px solid #2d2d44;
             color: #e0e0e0;
-            padding: 8px 10px;
+            padding: 4px 6px;
             border-radius: 4px;
             font-family: inherit;
             font-size: 13px;
@@ -78,72 +78,117 @@
         button.primary { background: #6b5b95; color: #fff; }
         button.primary:hover { background: #7d6ba3; }
 
+        .category-section {
+            margin-bottom: 12px;
+        }
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #12121a;
+            border: 1px solid #2d2d44;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            margin-bottom: 8px;
+        }
+        .category-header:hover {
+            background: #1a1a24;
+        }
+        .category-toggle {
+            color: #888;
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+        .category-header.collapsed .category-toggle {
+            transform: rotate(-90deg);
+        }
+        .category-name {
+            color: #9d4edd;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .category-count {
+            color: #666;
+            font-size: 11px;
+        }
+        .category-matches {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 8px;
+        }
+        .category-matches.collapsed {
+            display: none;
+        }
         .matches {
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 12px;
         }
         .match {
             background: #0a0a0f;
             border: 1px solid #2d2d44;
-            border-radius: 6px;
-            padding: 15px;
+            border-radius: 4px;
+            padding: 8px 10px;
+            font-size: 12px;
         }
         .match.active { border-color: #9d4edd; }
         .match-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 6px;
         }
         .match-title {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 6px;
         }
-        .match-name { font-weight: bold; color: #e0e0e0; text-decoration: none; }
+        .match-name { font-weight: bold; color: #e0e0e0; text-decoration: none; font-size: 11px; }
         .match-name:hover { color: #9d4edd; text-decoration: underline; }
+        .missed-trade { margin-left: 8px; font-size: 10px; color: #dc3545; cursor: help; }
         .status-dot {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: #444;
         }
         .status-dot.active { background: #22c55e; }
         .match-actions {
             display: flex;
-            gap: 8px;
+            gap: 4px;
         }
-        .match-actions button { padding: 5px 12px; font-size: 12px; }
+        .match-actions button { padding: 2px 8px; font-size: 10px; }
 
         .orderbooks {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 12px;
+            gap: 8px;
+            margin-bottom: 6px;
         }
         .orderbook {
             background: #000000;
-            border-radius: 4px;
-            padding: 10px;
+            border-radius: 3px;
+            padding: 6px;
         }
         .orderbook-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
-            padding-bottom: 6px;
+            margin-bottom: 4px;
+            padding-bottom: 3px;
             border-bottom: 1px solid #2d2d44;
         }
-        .orderbook-label { color: #9d4edd; font-weight: bold; }
-        .orderbook-theo { color: #888; font-size: 12px; }
+        .orderbook-label { color: #9d4edd; font-weight: bold; font-size: 11px; }
+        .orderbook-theo { color: #888; font-size: 10px; }
 
         .orderbook-row {
             display: flex;
             justify-content: space-between;
-            font-size: 13px;
-            margin-bottom: 4px;
+            font-size: 11px;
+            margin-bottom: 2px;
         }
-        .orderbook-side { color: #888; width: 30px; }
+        .orderbook-side { color: #888; width: 24px; }
         .orderbook-best { color: #e0e0e0; }
         .orderbook-our { font-weight: bold; }
         .orderbook-our.active { color: #9d4edd; }
@@ -154,36 +199,36 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-top: 10px;
+            padding-top: 6px;
             border-top: 1px solid #2d2d44;
-            font-size: 13px;
+            font-size: 11px;
         }
         .inventory { color: #888; }
         .inventory.overexposed { color: #dc3545; }
 
         .match-settings {
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: center;
         }
         .setting-group {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 2px;
         }
         .setting-group label {
             color: #666;
-            font-size: 11px;
+            font-size: 10px;
         }
         .setting-group input {
             background: #000;
             border: 1px solid #2d2d44;
             color: #e0e0e0;
-            padding: 3px 6px;
-            border-radius: 3px;
+            padding: 2px 4px;
+            border-radius: 2px;
             font-family: inherit;
-            font-size: 12px;
-            width: 50px;
+            font-size: 10px;
+            width: 40px;
             text-align: center;
         }
         .setting-group input:focus {
@@ -191,7 +236,7 @@
             border-color: #9d4edd;
         }
         .setting-group input.wide {
-            width: 70px;
+            width: 52px;
         }
 
         .fills {
@@ -529,15 +574,15 @@
             </div>
             <div class="form-group">
                 <label>edge</label>
-                <input type="number" id="edge" class="short" step="0.1" value="1.5">
+                <input type="number" id="edge" class="short" step="0.1" value="2.5">
             </div>
             <div class="form-group">
                 <label>contracts</label>
-                <input type="number" id="contracts" class="short" value="30">
+                <input type="number" id="contracts" class="short" value="5">
             </div>
             <div class="form-group">
                 <label>inv max</label>
-                <input type="number" id="inventory_max" class="short" value="20">
+                <input type="number" id="inventory_max" class="short" value="15">
             </div>
             <button onclick="addMatch(this)">add</button>
         </div>
@@ -553,15 +598,15 @@
             <h3>add all markets</h3>
             <div class="modal-row">
                 <label>edge</label>
-                <input type="number" id="modal-edge" step="0.1" value="1.5">
+                <input type="number" id="modal-edge" step="0.1" value="2.5">
             </div>
             <div class="modal-row">
                 <label>contracts</label>
-                <input type="number" id="modal-contracts" value="30">
+                <input type="number" id="modal-contracts" value="5">
             </div>
             <div class="modal-row">
                 <label>inv max</label>
-                <input type="number" id="modal-inventory-max" value="20">
+                <input type="number" id="modal-inventory-max" value="15">
             </div>
             <div class="modal-row">
                 <label>markets</label>
@@ -583,6 +628,16 @@
         let lastFillsJson = '';
         let marketCache = {};  // Cache for market data by type
         let settingsInitialized = false;
+        let collapsedCategories = {};  // Track which categories are collapsed
+
+        function toggleCategory(category) {
+            collapsedCategories[category] = !collapsedCategories[category];
+            render();
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/'/g, "\\'");
+        }
 
         function toggleApiDropdown() {
             const menu = document.getElementById('api-dropdown-menu');
@@ -649,80 +704,101 @@
                 settingsInitialized = true;
             }
 
-            // Render matches
+            // Group matches by category
+            const categorized = {};
+            state.matches.forEach(m => {
+                const cat = m.category || 'Other';
+                if (!categorized[cat]) categorized[cat] = [];
+                categorized[cat].push(m);
+            });
+
+            // Render matches grouped by category
             const matchesEl = document.getElementById('matches');
-            matchesEl.innerHTML = state.matches.map(m => `
-                <div class="match ${m.active ? 'active' : ''}">
-                    <div class="match-header">
-                        <div class="match-title">
-                            <div class="status-dot ${m.active ? 'active' : ''}"></div>
-                            <a class="match-name" href="https://kalshi.com/markets/${m.market_a.ticker}" target="_blank">${m.name}</a>
-                        </div>
-                        <div class="match-actions">
-                            ${m.active
-                                ? `<button class="stop" onclick="stopMatch('${m.id}', this)">stop</button>`
-                                : `<button onclick="startMatch('${m.id}', this)">start</button>`
-                            }
-                            <button class="secondary" onclick="removeMatch('${m.id}', this)">remove</button>
-                        </div>
+            matchesEl.innerHTML = Object.entries(categorized).map(([category, catMatches]) => `
+                <div class="category-section">
+                    <div class="category-header ${collapsedCategories[category] ? 'collapsed' : ''}" onclick="toggleCategory('${escapeHtml(category)}')">
+                        <span class="category-toggle">▼</span>
+                        <span class="category-name">${category}</span>
+                        <span class="category-count">(${catMatches.length})</span>
                     </div>
-                    <div class="orderbooks">
-                        <div class="orderbook">
-                            <div class="orderbook-header">
-                                <span class="orderbook-label">${m.market_a.label}</span>
-                                <span class="orderbook-theo">theo ${m.market_a.theo.toFixed(1)}c</span>
+                    <div class="category-matches ${collapsedCategories[category] ? 'collapsed' : ''}">
+                        ${catMatches.map(m => `
+                            <div class="match ${m.active ? 'active' : ''}">
+                                <div class="match-header">
+                                    <div class="match-title">
+                                        <div class="status-dot ${m.active ? 'active' : ''}"></div>
+                                        <a class="match-name" href="${m.market_url || '#'}" target="_blank" ${m.market_url ? '' : 'onclick="return false;"'}>${m.name}</a>
+                                        ${m.missed_trade_time ? `<span class="missed-trade" title="${m.missed_trade_desc}">❌ ${m.missed_trade_time}</span>` : ''}
+                                    </div>
+                                    <div class="match-actions">
+                                        ${m.active
+                                            ? `<button class="stop" onclick="stopMatch('${m.id}', this)">stop</button>`
+                                            : `<button onclick="startMatch('${m.id}', this)">start</button>`
+                                        }
+                                        <button class="secondary" onclick="refreshOdds('${m.id}', this)" title="Refresh odds from Odds API">↻</button>
+                                        <button class="secondary" onclick="removeMatch('${m.id}', this)">remove</button>
+                                    </div>
+                                </div>
+                                <div class="orderbooks">
+                                    <div class="orderbook">
+                                        <div class="orderbook-header">
+                                            <span class="orderbook-label">${m.market_a.label}</span>
+                                            <span class="orderbook-theo">theo ${m.market_a.theo.toFixed(1)}c</span>
+                                        </div>
+                                        <div class="orderbook-row">
+                                            <span class="orderbook-side">yes</span>
+                                            <span class="orderbook-best">${m.market_a.best_bid}@${m.market_a.best_ask}</span>
+                                            ${renderOrder(m.orders.a_yes, m.active)}
+                                        </div>
+                                        <div class="orderbook-row">
+                                            <span class="orderbook-side">no</span>
+                                            <span class="orderbook-best">${100 - m.market_a.best_ask}@${100 - m.market_a.best_bid}</span>
+                                            ${renderOrder(m.orders.a_no, m.active)}
+                                        </div>
+                                    </div>
+                                    <div class="orderbook">
+                                        <div class="orderbook-header">
+                                            <span class="orderbook-label">${m.market_b.label}</span>
+                                            <span class="orderbook-theo">theo ${m.market_b.theo.toFixed(1)}c</span>
+                                        </div>
+                                        <div class="orderbook-row">
+                                            <span class="orderbook-side">yes</span>
+                                            <span class="orderbook-best">${m.market_b.best_bid}@${m.market_b.best_ask}</span>
+                                            ${renderOrder(m.orders.b_yes, m.active)}
+                                        </div>
+                                        <div class="orderbook-row">
+                                            <span class="orderbook-side">no</span>
+                                            <span class="orderbook-best">${100 - m.market_b.best_ask}@${100 - m.market_b.best_bid}</span>
+                                            ${renderOrder(m.orders.b_no, m.active)}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="match-footer">
+                                    <span class="inventory ${Math.abs(m.inventory) >= m.inventory_max ? 'overexposed' : ''}">
+                                        ${m.inventory === 0 ? 'neutral' : m.inventory > 0 ? `long ${m.market_a.label} (${m.inventory})` : `long ${m.market_b.label} (${Math.abs(m.inventory)})`}
+                                    </span>
+                                    <div class="match-settings">
+                                        <div class="setting-group">
+                                            <label>odds</label>
+                                            <input type="number" step="0.01" value="${m.odds_a}" class="wide" onchange="updateSettings('${m.id}', 'odds_a', this.value)">
+                                            <input type="number" step="0.01" value="${m.odds_b}" class="wide" onchange="updateSettings('${m.id}', 'odds_b', this.value)">
+                                        </div>
+                                        <div class="setting-group">
+                                            <label>edge</label>
+                                            <input type="number" step="0.1" value="${m.edge}" onchange="updateSettings('${m.id}', 'edge', this.value)">
+                                        </div>
+                                        <div class="setting-group">
+                                            <label>size</label>
+                                            <input type="number" value="${m.contracts}" onchange="updateSettings('${m.id}', 'contracts', this.value)">
+                                        </div>
+                                        <div class="setting-group">
+                                            <label>max</label>
+                                            <input type="number" value="${m.inventory_max}" onchange="updateSettings('${m.id}', 'inventory_max', this.value)">
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="orderbook-row">
-                                <span class="orderbook-side">yes</span>
-                                <span class="orderbook-best">${m.market_a.best_bid}@${m.market_a.best_ask}</span>
-                                ${renderOrder(m.orders.a_yes, m.active)}
-                            </div>
-                            <div class="orderbook-row">
-                                <span class="orderbook-side">no</span>
-                                <span class="orderbook-best">${100 - m.market_a.best_ask}@${100 - m.market_a.best_bid}</span>
-                                ${renderOrder(m.orders.a_no, m.active)}
-                            </div>
-                        </div>
-                        <div class="orderbook">
-                            <div class="orderbook-header">
-                                <span class="orderbook-label">${m.market_b.label}</span>
-                                <span class="orderbook-theo">theo ${m.market_b.theo.toFixed(1)}c</span>
-                            </div>
-                            <div class="orderbook-row">
-                                <span class="orderbook-side">yes</span>
-                                <span class="orderbook-best">${m.market_b.best_bid}@${m.market_b.best_ask}</span>
-                                ${renderOrder(m.orders.b_yes, m.active)}
-                            </div>
-                            <div class="orderbook-row">
-                                <span class="orderbook-side">no</span>
-                                <span class="orderbook-best">${100 - m.market_b.best_ask}@${100 - m.market_b.best_bid}</span>
-                                ${renderOrder(m.orders.b_no, m.active)}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="match-footer">
-                        <span class="inventory ${Math.abs(m.inventory) >= m.inventory_max ? 'overexposed' : ''}">
-                            ${m.inventory === 0 ? 'neutral' : m.inventory > 0 ? `long ${m.market_a.label} (${m.inventory})` : `long ${m.market_b.label} (${Math.abs(m.inventory)})`}
-                        </span>
-                        <div class="match-settings">
-                            <div class="setting-group">
-                                <label>odds</label>
-                                <input type="number" step="0.01" value="${m.odds_a}" class="wide" onchange="updateSettings('${m.id}', 'odds_a', this.value)">
-                                <input type="number" step="0.01" value="${m.odds_b}" class="wide" onchange="updateSettings('${m.id}', 'odds_b', this.value)">
-                            </div>
-                            <div class="setting-group">
-                                <label>edge</label>
-                                <input type="number" step="0.1" value="${m.edge}" onchange="updateSettings('${m.id}', 'edge', this.value)">
-                            </div>
-                            <div class="setting-group">
-                                <label>size</label>
-                                <input type="number" value="${m.contracts}" onchange="updateSettings('${m.id}', 'contracts', this.value)">
-                            </div>
-                            <div class="setting-group">
-                                <label>max</label>
-                                <input type="number" value="${m.inventory_max}" onchange="updateSettings('${m.id}', 'inventory_max', this.value)">
-                            </div>
-                        </div>
+                        `).join('')}
                     </div>
                 </div>
             `).join('');
@@ -800,9 +876,9 @@
             const ticker_b = document.getElementById('ticker_b').value;
             const odds_a = parseFloat(document.getElementById('odds_a').value);
             const odds_b = parseFloat(document.getElementById('odds_b').value);
-            const edge = parseFloat(document.getElementById('edge').value) || 1.5;
-            const contracts = parseInt(document.getElementById('contracts').value) || 30;
-            const inventory_max = parseInt(document.getElementById('inventory_max').value) || 20;
+            const edge = parseFloat(document.getElementById('edge').value) || 2.5;
+            const contracts = parseInt(document.getElementById('contracts').value) || 5;
+            const inventory_max = parseInt(document.getElementById('inventory_max').value) || 15;
 
             if (!ticker_a || !ticker_b || !odds_a || !odds_b) {
                 alert('please fill all fields');
@@ -812,10 +888,15 @@
             // Show loading
             if (btn) { btn.disabled = true; btn.textContent = '...'; }
 
+            const payload = { ticker_a, ticker_b, odds_a, odds_b, edge, contracts, inventory_max };
+            if (selectedEventTime) {
+                payload.event_time = selectedEventTime;
+            }
+
             await fetch('/api/matches', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticker_a, ticker_b, odds_a, odds_b, edge, contracts, inventory_max })
+                body: JSON.stringify(payload)
             });
 
             // Clear ticker and odds inputs only
@@ -823,6 +904,7 @@
             document.getElementById('ticker_b').value = '';
             document.getElementById('odds_a').value = '';
             document.getElementById('odds_b').value = '';
+            selectedEventTime = null;  // Clear after use
 
             // Reset button
             if (btn) { btn.disabled = false; btn.textContent = 'add'; }
@@ -853,6 +935,23 @@
                 render();
 
                 await fetch(`/api/matches/${id}`, { method: 'DELETE' });
+            }
+        }
+
+        async function refreshOdds(id, btn) {
+            // Show loading
+            const origText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '...';
+
+            const resp = await fetch(`/api/matches/${id}/refresh-odds`, { method: 'POST' });
+            const data = await resp.json();
+
+            btn.disabled = false;
+            btn.textContent = origText;
+
+            if (data.error) {
+                alert('Refresh failed: ' + data.error);
             }
         }
 
@@ -967,6 +1066,8 @@
             actionsEl.style.display = 'block';
         }
 
+        let selectedEventTime = null;  // Store commence_time from selected market
+
         function selectMarket(index) {
             const m = availableMarkets[index];
             if (!m) return;
@@ -975,6 +1076,7 @@
             document.getElementById('ticker_b').value = m.ticker_b;
             document.getElementById('odds_a').value = m.odds_a;
             document.getElementById('odds_b').value = m.odds_b;
+            selectedEventTime = m.commence_time;  // Store for addMatch()
 
             // Scroll to the add match form
             document.querySelector('.controls').scrollIntoView({ behavior: 'smooth' });
@@ -993,62 +1095,58 @@
         }
 
         async function addAllMarkets() {
-            const edge = parseFloat(document.getElementById('modal-edge').value) || 1.5;
-            const contracts = parseInt(document.getElementById('modal-contracts').value) || 30;
-            const inventory_max = parseInt(document.getElementById('modal-inventory-max').value) || 20;
+            const edge = parseFloat(document.getElementById('modal-edge').value) || 2.5;
+            const contracts = parseInt(document.getElementById('modal-contracts').value) || 5;
+            const inventory_max = parseInt(document.getElementById('modal-inventory-max').value) || 15;
 
             hideAddAllModal();
 
-            for (const m of availableMarkets) {
-                await fetch('/api/matches', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ticker_a: m.ticker_a,
-                        ticker_b: m.ticker_b,
-                        odds_a: m.odds_a,
-                        odds_b: m.odds_b,
-                        edge,
-                        contracts,
-                        inventory_max
-                    })
-                });
-            }
+            // Use batch endpoint for parallel adds
+            const configs = availableMarkets.map(m => ({
+                ticker_a: m.ticker_a,
+                ticker_b: m.ticker_b,
+                odds_a: m.odds_a,
+                odds_b: m.odds_b,
+                edge,
+                contracts,
+                inventory_max,
+                event_time: m.commence_time
+            }));
+
+            await fetch('/api/matches/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(configs)
+            });
         }
 
         async function addAndStartAllMarkets() {
-            const edge = parseFloat(document.getElementById('modal-edge').value) || 1.5;
-            const contracts = parseInt(document.getElementById('modal-contracts').value) || 30;
-            const inventory_max = parseInt(document.getElementById('modal-inventory-max').value) || 20;
+            const edge = parseFloat(document.getElementById('modal-edge').value) || 2.5;
+            const contracts = parseInt(document.getElementById('modal-contracts').value) || 5;
+            const inventory_max = parseInt(document.getElementById('modal-inventory-max').value) || 15;
 
             hideAddAllModal();
 
-            // Add all markets and collect their IDs
-            const matchIds = [];
-            for (const m of availableMarkets) {
-                const resp = await fetch('/api/matches', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ticker_a: m.ticker_a,
-                        ticker_b: m.ticker_b,
-                        odds_a: m.odds_a,
-                        odds_b: m.odds_b,
-                        edge,
-                        contracts,
-                        inventory_max
-                    })
-                });
-                const data = await resp.json();
-                if (data.id) {
-                    matchIds.push(data.id);
-                }
-            }
+            // Use batch endpoint for parallel adds
+            const configs = availableMarkets.map(m => ({
+                ticker_a: m.ticker_a,
+                ticker_b: m.ticker_b,
+                odds_a: m.odds_a,
+                odds_b: m.odds_b,
+                edge,
+                contracts,
+                inventory_max,
+                event_time: m.commence_time
+            }));
 
-            // Start all added markets
-            for (const id of matchIds) {
-                await fetch(`/api/matches/${id}/start`, { method: 'POST' });
-            }
+            await fetch('/api/matches/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(configs)
+            });
+
+            // Start all using parallel endpoint
+            await fetch('/api/matches/start-all', { method: 'POST' });
         }
 
         async function updateGlobalSettings() {
@@ -1084,9 +1182,11 @@
                 alert('No inactive matches to start');
                 return;
             }
-            for (const m of inactiveMatches) {
-                await fetch(`/api/matches/${m.id}/start`, { method: 'POST' });
-            }
+            // Optimistic update
+            inactiveMatches.forEach(m => m.active = true);
+            render();
+            // Use parallel start endpoint
+            await fetch('/api/matches/start-all', { method: 'POST' });
         }
 
         // Initial connection

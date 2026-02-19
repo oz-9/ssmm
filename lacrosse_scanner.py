@@ -155,17 +155,44 @@ def match_events(kalshi_events: dict, odds_events: list) -> list[LacrosseMatch]:
 
             # Check if both teams appear
             if home_norm in title_lower and away_norm in title_lower:
-                # Get best odds
-                best_home = best_away = 0
+                # Collect odds - Pinnacle 60%, average of others 40%
+                pinnacle_home = pinnacle_away = None
+                other_home = []
+                other_away = []
                 bookmakers = []
 
                 for bm in odds_event.get("bookmakers", []):
+                    bm_key = bm["key"]
+                    home_price = away_price = None
                     for outcome in bm["markets"][0]["outcomes"]:
-                        if outcome["name"] == home and outcome["price"] > best_home:
-                            best_home = outcome["price"]
-                        if outcome["name"] == away and outcome["price"] > best_away:
-                            best_away = outcome["price"]
-                    bookmakers.append(bm["key"])
+                        if outcome["name"] == home:
+                            home_price = outcome["price"]
+                        if outcome["name"] == away:
+                            away_price = outcome["price"]
+
+                    if home_price and away_price:
+                        bookmakers.append(bm_key)
+                        if bm_key == "pinnacle":
+                            pinnacle_home = home_price
+                            pinnacle_away = away_price
+                        else:
+                            other_home.append(home_price)
+                            other_away.append(away_price)
+
+                # Calculate: 60% Pinnacle, 40% average of others (or 100% Pinnacle if no others, or 100% others if no Pinnacle)
+                if pinnacle_home and other_home:
+                    avg_other_home = sum(other_home) / len(other_home)
+                    avg_other_away = sum(other_away) / len(other_away)
+                    best_home = 0.6 * pinnacle_home + 0.4 * avg_other_home
+                    best_away = 0.6 * pinnacle_away + 0.4 * avg_other_away
+                elif pinnacle_home:
+                    best_home = pinnacle_home
+                    best_away = pinnacle_away
+                elif other_home:
+                    best_home = sum(other_home) / len(other_home)
+                    best_away = sum(other_away) / len(other_away)
+                else:
+                    best_home = best_away = 0
 
                 if best_home > 0 and best_away > 0:
                     # Figure out which ticker is which team

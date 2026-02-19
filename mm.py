@@ -316,14 +316,20 @@ class KalshiWebSocket:
         elif msg_type == "fill":
             # Fill notification: order_id, market_ticker, side, yes_price, count, action, post_position
             data = msg.get("msg", {})
+            print(f"[WS] Fill received: {data.get('market_ticker')} {data.get('side')} {data.get('count')}@{data.get('yes_price')}c")
             for cb in self._fill_callbacks:
                 await cb(data)
 
         elif msg_type == "market_positions":
             # Position update: market_ticker, position, etc.
             data = msg.get("msg", {})
+            print(f"[WS] Position update: {data.get('market_ticker')} pos={data.get('position')}")
             for cb in self._position_callbacks:
                 await cb(data)
+
+        elif msg_type not in ("orderbook_snapshot", "orderbook_delta", "subscribed", "unsubscribed", "error"):
+            # Log unknown message types
+            print(f"[WS] Unknown message type: {msg_type} - {msg}")
 
     async def listen(self):
         """Main loop to receive and process messages with auto-reconnect."""
@@ -460,7 +466,7 @@ def calculate_adaptive_price(
         edge_min: minimum edge from theo
         our_current: our current price (to detect our order)
         sticky_ceiling: stay at ceiling even if competition drops
-        is_retest: drop down to find better price (overrides sticky)
+        is_retest: drop down by 1 cent to probe for better price
         best_qty: quantity at best price (to detect ties)
         our_size: our order size
 
@@ -471,18 +477,31 @@ def calculate_adaptive_price(
         ceiling = int(theo - edge_min)
 
         if our_current is not None and best_price == our_current:
+            # We're at top of book
             tied_at_top = best_qty > our_size
             if tied_at_top and our_current < ceiling:
+                # Someone tied us, raise by 1 if below ceiling
                 target = our_current + 1
-            elif sticky_ceiling and not is_retest:
+            elif is_retest and our_current > 1:
+                # Time to probe - drop by 1 cent
+                # But only if competition is below us
+                if second_price < our_current - 1:
+                    target = our_current - 1
+                else:
+                    # Competition right behind us, stay put
+                    target = our_current
+            elif sticky_ceiling:
+                # Stay at current price
                 target = our_current
             else:
                 target = second_price + 1 if second_price > 0 else 1
         elif our_current is not None and best_price > our_current:
+            # Someone outbid us
             if best_price > ceiling:
-                return -1
+                return -1  # Back off, they're above our ceiling
             target = best_price + 1
         else:
+            # No current order, or best_price < our_current (shouldn't happen)
             if best_price > ceiling:
                 return -1
             target = best_price + 1
