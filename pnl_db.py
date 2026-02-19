@@ -77,3 +77,63 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_pnl_matches_ticker_a ON pnl_matches(ticker_a);
             CREATE INDEX IF NOT EXISTS idx_pnl_matches_ticker_b ON pnl_matches(ticker_b);
         """)
+
+
+def insert_fill(
+    fill_id: str,
+    ticker: str,
+    side: str,
+    action: str,
+    price: int,
+    count: int,
+    is_taker: bool,
+    fee_cost: int,
+    created_time: str,
+    match_id: Optional[str] = None,
+) -> bool:
+    """Insert or update a fill. Returns True if inserted, False if already exists."""
+    with get_db() as conn:
+        try:
+            conn.execute(
+                """
+                INSERT INTO fills (id, ticker, side, action, price, count, is_taker, fee_cost, created_time, match_id, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET match_id = excluded.match_id
+                """,
+                (fill_id, ticker, side, action, price, count, is_taker, fee_cost, created_time, match_id, datetime.utcnow().isoformat())
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def get_fills_for_match(match_id: str) -> list[dict]:
+    """Get all fills for a match."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM fills WHERE match_id = ? ORDER BY created_time",
+            (match_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_fills_by_ticker(ticker: str) -> list[dict]:
+    """Get all fills for a ticker."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM fills WHERE ticker = ? ORDER BY created_time",
+            (ticker,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def link_fills_to_match(match_id: str, ticker_a: str, ticker_b: str):
+    """Link unlinked fills to a match by ticker."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE fills SET match_id = ?
+            WHERE match_id IS NULL AND ticker IN (?, ?)
+            """,
+            (match_id, ticker_a, ticker_b)
+        )
