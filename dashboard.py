@@ -699,6 +699,20 @@ async def on_fill(fill_data: dict):
         fills.append(fill)
         print(f"[{match.id}] FILL (WS): {fill.side} {count}@{price}c")
 
+        # Persist fill to database
+        pnl_db.insert_fill(
+            fill_id=fill_data.get("trade_id", f"{ticker}_{side}_{fill_time}"),
+            ticker=ticker,
+            side=side,
+            action="buy",
+            price=price,
+            count=count,
+            is_taker=fill_data.get("is_taker", True),
+            fee_cost=fill_data.get("taker_fee", 0),
+            created_time=datetime.datetime.utcnow().isoformat(),
+            match_id=match.id,
+        )
+
         # Track last fill for this match
         match.last_fill_time = fill_time
         match.last_fill_desc = f"{label} {side.upper()} {count}@{price}c"
