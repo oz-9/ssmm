@@ -714,6 +714,13 @@
 
             // Render matches grouped by category
             const matchesEl = document.getElementById('matches');
+
+            // Skip re-render if user is editing an input (prevents losing focus)
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.tagName === 'INPUT' && matchesEl.contains(activeEl)) {
+                return; // Don't re-render while editing
+            }
+
             matchesEl.innerHTML = Object.entries(categorized).map(([category, catMatches]) => `
                 <div class="category-section">
                     <div class="category-header ${collapsedCategories[category] ? 'collapsed' : ''}" onclick="toggleCategory('${escapeHtml(category)}')">
