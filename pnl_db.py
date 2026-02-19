@@ -137,3 +137,49 @@ def link_fills_to_match(match_id: str, ticker_a: str, ticker_b: str):
             """,
             (match_id, ticker_a, ticker_b)
         )
+
+
+def insert_hedge(
+    match_id: str,
+    platform: str,
+    side: str,
+    amount_usd: float,
+    odds: float,
+) -> int:
+    """Insert a hedge. Returns the hedge ID."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO hedges (match_id, platform, side, amount_usd, odds, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (match_id, platform, side, amount_usd, odds, datetime.utcnow().isoformat())
+        )
+        return cursor.lastrowid
+
+
+def update_hedge_outcome(hedge_id: int, outcome: str) -> bool:
+    """Update hedge outcome ('win', 'loss', 'push'). Returns True if updated."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "UPDATE hedges SET outcome = ? WHERE id = ?",
+            (outcome, hedge_id)
+        )
+        return cursor.rowcount > 0
+
+
+def get_hedges_for_match(match_id: str) -> list[dict]:
+    """Get all hedges for a match."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM hedges WHERE match_id = ? ORDER BY created_at",
+            (match_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_hedge(hedge_id: int) -> bool:
+    """Delete a hedge. Returns True if deleted."""
+    with get_db() as conn:
+        cursor = conn.execute("DELETE FROM hedges WHERE id = ?", (hedge_id,))
+        return cursor.rowcount > 0
