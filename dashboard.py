@@ -822,6 +822,11 @@ def get_state() -> dict:
                 "contracts": m.contracts,
                 "inventory_max": m.inventory_max,
                 "event_time": m.event_time.isoformat() if m.event_time else None,
+                "pnl": pnl_db.calculate_match_pnl(
+                    m.id,
+                    int(m.market_a.theo),
+                    int(m.market_b.theo)
+                ) if pnl_db.get_match(m.id) else None,
             }
             for m in matches.values()
         ],
