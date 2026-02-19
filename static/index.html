@@ -537,6 +537,19 @@
         </div>
     </div>
 
+    <div class="fills" id="pnl-summary-container">
+        <h3>P&L Summary
+            <select id="pnl-period" onchange="loadPnlSummary()" style="margin-left: 10px; background: #000; border: 1px solid #2d2d44; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+            </select>
+        </h3>
+        <div id="pnl-summary-table" style="margin-top: 10px;">
+            <div class="no-fills">Loading...</div>
+        </div>
+    </div>
+
     <div class="market-picker">
         <h3>find markets</h3>
         <select id="market-type" onchange="onMarketTypeChange()">
@@ -1000,6 +1013,13 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
+            // Update local state immediately
+            Object.assign(match, payload);
+
+            // Blur input and re-render
+            if (document.activeElement) document.activeElement.blur();
+            renderState();
         }
 
         // Market picker functions
@@ -1209,6 +1229,54 @@
             render();
             // Use parallel start endpoint
             await fetch('/api/matches/start-all', { method: 'POST' });
+        }
+
+        // P&L Summary functions
+        async function loadPnlSummary() {
+            const period = document.getElementById('pnl-period').value;
+            const tableEl = document.getElementById('pnl-summary-table');
+
+            try {
+                const resp = await fetch(`/api/pnl/summary?period=${period}`);
+                const data = await resp.json();
+
+                if (!data.summary || data.summary.length === 0) {
+                    tableEl.innerHTML = '<div class="no-fills">No P&L data yet.</div>';
+                    return;
+                }
+
+                let html = `
+                    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                        <thead>
+                            <tr style="color: #888; text-align: left;">
+                                <th style="padding: 6px;">Period</th>
+                                <th style="padding: 6px;">Arb</th>
+                                <th style="padding: 6px;">Fees</th>
+                                <th style="padding: 6px;">Hedge</th>
+                                <th style="padding: 6px;">Net</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                for (const row of data.summary) {
+                    const netColor = row.net_profit >= 0 ? '#22c55e' : '#dc3545';
+                    html += `
+                        <tr style="border-top: 1px solid #2d2d44;">
+                            <td style="padding: 6px;">${row.period}</td>
+                            <td style="padding: 6px; color: ${row.arb_profit >= 0 ? '#22c55e' : '#dc3545'}">$${(row.arb_profit / 100).toFixed(2)}</td>
+                            <td style="padding: 6px; color: #dc3545">-$${(row.fees / 100).toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${row.hedge_pnl >= 0 ? '#22c55e' : '#dc3545'}">$${row.hedge_pnl.toFixed(2)}</td>
+                            <td style="padding: 6px; color: ${netColor}">$${(row.net_profit / 100).toFixed(2)}</td>
+                        </tr>
+                    `;
+                }
+
+                html += '</tbody></table>';
+                tableEl.innerHTML = html;
+            } catch (e) {
+                tableEl.innerHTML = '<div class="no-fills">Error loading P&L data.</div>';
+            }
         }
 
         // Hedge modal functions

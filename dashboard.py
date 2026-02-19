@@ -1393,18 +1393,28 @@ async def api_update_settings(match_id: str, update: UpdateSettings):
         return {"ok": False}
 
     match = matches[match_id]
+    needs_quote_update = False
 
     if update.odds_a is not None and update.odds_b is not None:
         update_match_odds(match_id, update.odds_a, update.odds_b)
+        needs_quote_update = True
     if update.edge is not None:
         print(f"[{match_id}] Edge changed: {match.edge} -> {update.edge}")
         match.edge = update.edge
+        needs_quote_update = True
     if update.contracts is not None:
         match.contracts = update.contracts
+        needs_quote_update = True
     if update.inventory_max is not None:
         match.inventory_max = update.inventory_max
+        needs_quote_update = True
     if update.inventory is not None:
         match.inventory = update.inventory
+        needs_quote_update = True
+
+    # Immediately update quotes if match is active (cancels overexposing orders)
+    if needs_quote_update and match.active:
+        await handle_match_update(match)
 
     await broadcast(get_state())
     return {"ok": True}
