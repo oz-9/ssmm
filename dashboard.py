@@ -1025,7 +1025,7 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_a["best_bid_qty"], our_size=contracts,
             )
         if a_yes_price == -1:
-            a_yes_reason = f"competitor overbidding ({book_a['best_bid']})"
+            a_yes_reason = f"bad top bid ({book_a['best_bid']})"
         elif a_yes_price == ceiling_a:
             a_yes_reason = "at ceiling"
         else:
@@ -1056,7 +1056,7 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_b["best_bid_qty"], our_size=contracts,
             )
         if b_yes_price == -1:
-            b_yes_reason = f"competitor overbidding ({book_b['best_bid']})"
+            b_yes_reason = f"bad top bid ({book_b['best_bid']})"
         elif b_yes_price == ceiling_b:
             b_yes_reason = "at ceiling"
         else:
@@ -1086,7 +1086,7 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_a["best_no_bid_qty"], our_size=contracts,
             )
         if a_no_price == -1:
-            a_no_reason = f"competitor overbidding ({book_a['best_no_bid']})"
+            a_no_reason = f"bad top bid ({book_a['best_no_bid']})"
         elif a_no_price == ceiling_b:
             a_no_reason = "at ceiling"
         else:
@@ -1116,7 +1116,7 @@ async def update_quotes(match: Match, book_a: dict, book_b: dict):
             best_qty=book_b["best_no_bid_qty"], our_size=contracts,
             )
         if b_no_price == -1:
-            b_no_reason = f"competitor overbidding ({book_b['best_no_bid']})"
+            b_no_reason = f"bad top bid ({book_b['best_no_bid']})"
         elif b_no_price == ceiling_a:
             b_no_reason = "at ceiling"
         else:
