@@ -234,3 +234,131 @@ def get_all_matches() -> list[dict]:
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM pnl_matches ORDER BY event_time DESC").fetchall()
         return [dict(row) for row in rows]
+
+
+def calculate_match_pnl(match_id: str, theo_a: int, theo_b: int) -> dict:
+    """
+    Calculate P&L breakdown for a match.
+
+    Returns:
+        {
+            "arb_profit": int,        # cents from completed pairs
+            "arb_pairs": int,         # number of paired contracts
+            "leftover_a": int,        # unpaired contracts long A
+            "leftover_b": int,        # unpaired contracts long B
+            "leftover_cost_a": int,   # cost basis for leftover A
+            "leftover_cost_b": int,   # cost basis for leftover B
+            "leftover_ev": int,       # theoretical EV in cents
+            "fees": int,              # total fees in cents
+            "hedge_pnl": float,       # hedge P&L in USD
+            "fills_a": list,          # fills going long A
+            "fills_b": list,          # fills going long B
+        }
+    """
+    fills = get_fills_for_match(match_id)
+    hedges = get_hedges_for_match(match_id)
+
+    # Separate fills by direction
+    # Long A = buy YES on ticker_a OR buy NO on ticker_b
+    # Long B = buy YES on ticker_b OR buy NO on ticker_a
+    fills_a = []  # (price, count, fee)
+    fills_b = []
+
+    match = get_match(match_id)
+    if not match:
+        return {"error": "Match not found"}
+
+    ticker_a = match["ticker_a"]
+    ticker_b = match["ticker_b"]
+
+    for f in fills:
+        fee = f["fee_cost"] or 0
+        if (f["ticker"] == ticker_a and f["side"] == "yes") or \
+           (f["ticker"] == ticker_b and f["side"] == "no"):
+            fills_a.append({"price": f["price"], "count": f["count"], "fee": fee})
+        else:
+            fills_b.append({"price": f["price"], "count": f["count"], "fee": fee})
+
+    # Pair fills FIFO
+    total_a = sum(f["count"] for f in fills_a)
+    total_b = sum(f["count"] for f in fills_b)
+    paired = min(total_a, total_b)
+
+    # Calculate arb profit from paired contracts
+    arb_profit = 0
+    cost_a = 0
+    cost_b = 0
+    remaining_a = paired
+    remaining_b = paired
+
+    # Sum costs for paired portion
+    for f in fills_a:
+        take = min(f["count"], remaining_a)
+        cost_a += take * f["price"]
+        remaining_a -= take
+        if remaining_a == 0:
+            break
+
+    for f in fills_b:
+        take = min(f["count"], remaining_b)
+        cost_b += take * f["price"]
+        remaining_b -= take
+        if remaining_b == 0:
+            break
+
+    arb_profit = (100 * paired) - cost_a - cost_b
+
+    # Calculate leftover
+    leftover_a = total_a - paired
+    leftover_b = total_b - paired
+
+    # Leftover cost basis
+    leftover_cost_a = 0
+    leftover_cost_b = 0
+    skip_a = paired
+    skip_b = paired
+
+    for f in fills_a:
+        if skip_a >= f["count"]:
+            skip_a -= f["count"]
+        else:
+            take = f["count"] - skip_a
+            leftover_cost_a += take * f["price"]
+            skip_a = 0
+
+    for f in fills_b:
+        if skip_b >= f["count"]:
+            skip_b -= f["count"]
+        else:
+            take = f["count"] - skip_b
+            leftover_cost_b += take * f["price"]
+            skip_b = 0
+
+    # Leftover theoretical EV
+    leftover_ev = int(leftover_a * theo_a + leftover_b * theo_b)
+
+    # Total fees
+    fees = sum(f["fee"] for f in fills_a) + sum(f["fee"] for f in fills_b)
+
+    # Hedge P&L
+    hedge_pnl = 0.0
+    for h in hedges:
+        if h["outcome"] == "win":
+            hedge_pnl += h["amount_usd"] * (h["odds"] - 1)
+        elif h["outcome"] == "loss":
+            hedge_pnl -= h["amount_usd"]
+        # push = 0
+
+    return {
+        "arb_profit": arb_profit,
+        "arb_pairs": paired,
+        "leftover_a": leftover_a,
+        "leftover_b": leftover_b,
+        "leftover_cost_a": leftover_cost_a,
+        "leftover_cost_b": leftover_cost_b,
+        "leftover_ev": leftover_ev,
+        "fees": fees,
+        "hedge_pnl": hedge_pnl,
+        "total_fills_a": total_a,
+        "total_fills_b": total_b,
+    }
