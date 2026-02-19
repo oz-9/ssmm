@@ -22,6 +22,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+import pnl_db
+
 # Import from mm.py
 from mm import (
     KalshiClient,
@@ -102,8 +104,10 @@ def signal_handler(signum, frame):
     emergency_cancel_all_orders()
     sys.exit(0)
 
+# Register SIGINT on all platforms (Ctrl+C)
+signal.signal(signal.SIGINT, signal_handler)
+# SIGTERM only on Unix
 if sys.platform != 'win32':
-    signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
 # =============================================================================
