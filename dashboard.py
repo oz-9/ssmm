@@ -426,6 +426,20 @@ def add_match(config: MatchConfig) -> Match:
     match.inventory = calculate_match_inventory(match)
 
     matches[match_id] = match
+
+    # Persist match to P&L database
+    pnl_db.upsert_match(
+        match_id=match.id,
+        ticker_a=config.ticker_a,
+        ticker_b=config.ticker_b,
+        theo_a=int(match.market_a.theo),
+        theo_b=int(match.market_b.theo),
+        event_time=match.event_time.isoformat() if match.event_time else None,
+        category=match.category,
+    )
+    # Link any existing fills for these tickers
+    pnl_db.link_fills_to_match(match.id, config.ticker_a, config.ticker_b)
+
     return match
 
 def update_match_odds(match_id: str, odds_a: float, odds_b: float):
