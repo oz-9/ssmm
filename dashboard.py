@@ -1206,6 +1206,9 @@ async def lifespan(app: FastAPI):
     # Init locks
     order_locks_lock = asyncio.Lock()
 
+    # Init P&L database
+    pnl_db.init_db()
+
     # Init Kalshi client
     init_client()
 
