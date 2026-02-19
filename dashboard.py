@@ -239,6 +239,18 @@ class UpdateSettings(BaseModel):
     inventory_max: Optional[int] = None
     inventory: Optional[int] = None
 
+class HedgeCreate(BaseModel):
+    """Create a hedge."""
+    match_id: str
+    platform: str
+    side: str  # 'team_a' or 'team_b'
+    amount_usd: float
+    odds: float
+
+class HedgeUpdate(BaseModel):
+    """Update hedge outcome."""
+    outcome: str  # 'win', 'loss', 'push'
+
 # =============================================================================
 # GLOBAL STATE
 # =============================================================================
@@ -1474,6 +1486,67 @@ async def api_kill_all():
 
     await broadcast(get_state())
     return {"ok": True, "cancelled": cancelled}
+
+@app.get("/api/pnl/match/{match_id}")
+async def api_get_match_pnl(match_id: str):
+    """Get P&L breakdown for a match."""
+    if match_id not in matches:
+        return {"error": "Match not found in active matches"}
+
+    match = matches[match_id]
+    theo_a = int(match.market_a.theo)
+    theo_b = int(match.market_b.theo)
+
+    pnl = pnl_db.calculate_match_pnl(match_id, theo_a, theo_b)
+    return pnl
+
+
+@app.get("/api/pnl/summary")
+async def api_get_pnl_summary(period: str = "daily"):
+    """Get aggregated P&L summary."""
+    if period not in ("daily", "weekly", "monthly"):
+        return {"error": "Invalid period. Use 'daily', 'weekly', or 'monthly'"}
+    return {"summary": pnl_db.get_pnl_summary(period)}
+
+
+@app.post("/api/hedges")
+async def api_create_hedge(hedge: HedgeCreate):
+    """Create a hedge entry."""
+    hedge_id = pnl_db.insert_hedge(
+        match_id=hedge.match_id,
+        platform=hedge.platform,
+        side=hedge.side,
+        amount_usd=hedge.amount_usd,
+        odds=hedge.odds,
+    )
+    return {"id": hedge_id}
+
+
+@app.put("/api/hedges/{hedge_id}")
+async def api_update_hedge(hedge_id: int, update: HedgeUpdate):
+    """Update hedge outcome."""
+    if update.outcome not in ("win", "loss", "push"):
+        return {"error": "Invalid outcome. Use 'win', 'loss', or 'push'"}
+    success = pnl_db.update_hedge_outcome(hedge_id, update.outcome)
+    return {"ok": success}
+
+
+@app.get("/api/hedges")
+async def api_get_hedges(match_id: Optional[str] = None):
+    """Get hedges, optionally filtered by match."""
+    if match_id:
+        return {"hedges": pnl_db.get_hedges_for_match(match_id)}
+    # Return all hedges
+    with pnl_db.get_db() as conn:
+        rows = conn.execute("SELECT * FROM hedges ORDER BY created_at DESC").fetchall()
+        return {"hedges": [dict(row) for row in rows]}
+
+
+@app.delete("/api/hedges/{hedge_id}")
+async def api_delete_hedge(hedge_id: int):
+    """Delete a hedge."""
+    success = pnl_db.delete_hedge(hedge_id)
+    return {"ok": success}
 
 @app.post("/api/sync-inventory")
 async def api_sync_inventory():
