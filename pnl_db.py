@@ -362,3 +362,82 @@ def calculate_match_pnl(match_id: str, theo_a: int, theo_b: int) -> dict:
         "total_fills_a": total_a,
         "total_fills_b": total_b,
     }
+
+
+def get_pnl_summary(period: str = "daily") -> list[dict]:
+    """
+    Get aggregated P&L by period.
+
+    Args:
+        period: 'daily', 'weekly', or 'monthly'
+
+    Returns list of:
+        {
+            "period": str,          # date/week/month label
+            "arb_profit": int,
+            "leftover_ev": int,
+            "fees": int,
+            "hedge_pnl": float,
+            "net_profit": float,    # arb_profit - fees + hedge_pnl (excludes leftover until settled)
+        }
+    """
+    with get_db() as conn:
+        # Get all matches with their P&L
+        matches = conn.execute("""
+            SELECT m.id, m.ticker_a, m.ticker_b, m.theo_a, m.theo_b, m.event_time
+            FROM pnl_matches m
+            WHERE EXISTS (SELECT 1 FROM fills f WHERE f.match_id = m.id)
+            ORDER BY m.event_time
+        """).fetchall()
+
+    # Group by period
+    from collections import defaultdict
+    periods = defaultdict(lambda: {
+        "arb_profit": 0,
+        "leftover_ev": 0,
+        "fees": 0,
+        "hedge_pnl": 0.0,
+    })
+
+    for m in matches:
+        match_id = m["id"]
+        theo_a = m["theo_a"] or 50
+        theo_b = m["theo_b"] or 50
+        event_time = m["event_time"] or ""
+
+        pnl = calculate_match_pnl(match_id, theo_a, theo_b)
+
+        # Determine period key
+        if event_time:
+            try:
+                dt = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+                if period == "daily":
+                    key = dt.strftime("%Y-%m-%d")
+                elif period == "weekly":
+                    key = f"{dt.year}-W{dt.isocalendar()[1]:02d}"
+                else:  # monthly
+                    key = dt.strftime("%Y-%m")
+            except:
+                key = "unknown"
+        else:
+            key = "unknown"
+
+        periods[key]["arb_profit"] += pnl.get("arb_profit", 0)
+        periods[key]["leftover_ev"] += pnl.get("leftover_ev", 0)
+        periods[key]["fees"] += pnl.get("fees", 0)
+        periods[key]["hedge_pnl"] += pnl.get("hedge_pnl", 0.0)
+
+    # Convert to list with net profit
+    result = []
+    for key in sorted(periods.keys(), reverse=True):
+        p = periods[key]
+        result.append({
+            "period": key,
+            "arb_profit": p["arb_profit"],
+            "leftover_ev": p["leftover_ev"],
+            "fees": p["fees"],
+            "hedge_pnl": p["hedge_pnl"],
+            "net_profit": p["arb_profit"] - p["fees"] + p["hedge_pnl"],
+        })
+
+    return result
