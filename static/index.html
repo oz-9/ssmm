@@ -804,6 +804,20 @@
                                         </div>
                                     </div>
                                 </div>
+                                ${m.pnl && (m.pnl.arb_profit !== 0 || m.pnl.leftover_a > 0 || m.pnl.leftover_b > 0) ? `
+                                <div class="pnl-section" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #2d2d44; font-size: 11px;">
+                                    <div style="display: flex; justify-content: space-between; color: #888;">
+                                        <span>Arb: <span style="color: ${m.pnl.arb_profit >= 0 ? '#22c55e' : '#dc3545'}">$${(m.pnl.arb_profit / 100).toFixed(2)}</span></span>
+                                        <span>Fees: <span style="color: #dc3545">-$${(m.pnl.fees / 100).toFixed(2)}</span></span>
+                                        <span>Net: <span style="color: ${(m.pnl.arb_profit - m.pnl.fees) >= 0 ? '#22c55e' : '#dc3545'}">$${((m.pnl.arb_profit - m.pnl.fees) / 100).toFixed(2)}</span></span>
+                                    </div>
+                                    ${m.pnl.leftover_a > 0 || m.pnl.leftover_b > 0 ? `
+                                    <div style="color: #888; margin-top: 4px;">
+                                        Leftover: ${m.pnl.leftover_a} ${m.market_a.label} / ${m.pnl.leftover_b} ${m.market_b.label} (EV: $${(m.pnl.leftover_ev / 100).toFixed(2)})
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                ` : ''}
                             </div>
                         `).join('')}
                     </div>
