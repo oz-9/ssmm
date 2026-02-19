@@ -768,12 +768,12 @@
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">yes</span>
-                                            <span class="orderbook-best">${m.market_a.best_bid}@${m.market_a.best_ask}</span>
+                                            <span class="orderbook-best">${m.market_a.second_bid || 0}-${m.market_a.best_bid}@${m.market_a.best_ask}-${m.market_a.second_ask || 0}</span>
                                             ${renderOrder(m.orders.a_yes, m.active)}
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">no</span>
-                                            <span class="orderbook-best">${100 - m.market_a.best_ask}@${100 - m.market_a.best_bid}</span>
+                                            <span class="orderbook-best">${100 - (m.market_a.second_ask || 100)}-${100 - m.market_a.best_ask}@${100 - m.market_a.best_bid}-${100 - (m.market_a.second_bid || 0)}</span>
                                             ${renderOrder(m.orders.a_no, m.active)}
                                         </div>
                                     </div>
@@ -784,12 +784,12 @@
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">yes</span>
-                                            <span class="orderbook-best">${m.market_b.best_bid}@${m.market_b.best_ask}</span>
+                                            <span class="orderbook-best">${m.market_b.second_bid || 0}-${m.market_b.best_bid}@${m.market_b.best_ask}-${m.market_b.second_ask || 0}</span>
                                             ${renderOrder(m.orders.b_yes, m.active)}
                                         </div>
                                         <div class="orderbook-row">
                                             <span class="orderbook-side">no</span>
-                                            <span class="orderbook-best">${100 - m.market_b.best_ask}@${100 - m.market_b.best_bid}</span>
+                                            <span class="orderbook-best">${100 - (m.market_b.second_ask || 100)}-${100 - m.market_b.best_ask}@${100 - m.market_b.best_bid}-${100 - (m.market_b.second_bid || 0)}</span>
                                             ${renderOrder(m.orders.b_no, m.active)}
                                         </div>
                                     </div>

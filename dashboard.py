@@ -149,6 +149,8 @@ class Market:
     theo: float  # cents
     best_bid: int = 0
     best_ask: int = 0
+    second_bid: int = 0
+    second_ask: int = 0
     our_bid: Optional[int] = None
     our_ask: Optional[int] = None
 
@@ -644,11 +646,15 @@ async def on_orderbook_change(ticker: str, book: dict):
         if ticker == match.market_a.ticker:
             match.market_a.best_bid = book["best_bid"]
             match.market_a.best_ask = book["best_ask"]
+            match.market_a.second_bid = book.get("second_bid", 0)
+            match.market_a.second_ask = book.get("second_ask", 0)
             await handle_match_update(match)
             break
         elif ticker == match.market_b.ticker:
             match.market_b.best_bid = book["best_bid"]
             match.market_b.best_ask = book["best_ask"]
+            match.market_b.second_bid = book.get("second_bid", 0)
+            match.market_b.second_ask = book.get("second_ask", 0)
             await handle_match_update(match)
             break
 
@@ -802,6 +808,8 @@ def get_state() -> dict:
                     "theo": m.market_a.theo,
                     "best_bid": m.market_a.best_bid,
                     "best_ask": m.market_a.best_ask,
+                    "second_bid": m.market_a.second_bid,
+                    "second_ask": m.market_a.second_ask,
                 },
                 "market_b": {
                     "label": m.market_b.label,
@@ -809,6 +817,8 @@ def get_state() -> dict:
                     "theo": m.market_b.theo,
                     "best_bid": m.market_b.best_bid,
                     "best_ask": m.market_b.best_ask,
+                    "second_bid": m.market_b.second_bid,
+                    "second_ask": m.market_b.second_ask,
                 },
                 "orders": {
                     "a_yes": {"price": m.a_yes_status.price, "reason": m.a_yes_status.reason},
